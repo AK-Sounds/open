@@ -1,79 +1,162 @@
+/* Base styles */
 :root {
-  --bg: #ffffff;
-  --panel: #fdfdfd;
-  --text: #111827;
-  --subtext: #9ca3af;
-  --border: #f3f4f6;
+  --primary: #35627a;
+  --secondary: #578aaf;
+  --accent: #95c8d8;
+  --background: #f7f9fa;
+  --text: #1f2a33;
+  --border-radius: 6px;
+  --transition-speed: 0.3s;
 }
 
+html,
 body {
   margin: 0;
-  background-color: var(--bg);
+  padding: 0;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: var(--background);
   color: var(--text);
-  font-family: -apple-system, sans-serif;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-height: 100vh;
+}
+
+header {
+  background: var(--primary);
+  color: white;
+  padding: 1.5rem;
+  text-align: center;
 }
 
 header h1 {
-  font-weight: 200;
-  letter-spacing: 1rem;
-  text-transform: uppercase;
-  margin-bottom: 3rem;
+  margin: 0;
+  font-size: 2.5rem;
+  letter-spacing: 1px;
+}
+
+header p {
+  margin-top: 0.3rem;
+  font-size: 1rem;
+  opacity: 0.9;
 }
 
 main {
-  width: 90%;
-  max-width: 800px; /* Doubled length */
+  max-width: 800px;
+  margin: 2rem auto;
+  padding: 0 1rem;
 }
 
-#controls {
-  background: var(--panel);
-  padding: 4rem;
-  border: 1px solid var(--border);
-  border-radius: 4px;
+section {
+  margin-bottom: 2rem;
+  background: white;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  border-radius: var(--border-radius);
+  padding: 1.5rem;
 }
 
-.form-group { margin-bottom: 3rem; }
-label { display: block; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1rem; margin-bottom: 1rem; color: var(--subtext); }
-
-input[type="range"] {
-  width: 100%; /* Spans across the 800px width */
-  height: 2px;
-  accent-color: var(--text);
-  cursor: pointer;
+section h2 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  font-size: 1.4rem;
+  color: var(--primary);
 }
 
-input[type="number"], select {
-  width: 100%;
-  border: 1px solid var(--border);
-  padding: 1rem;
+.form-group {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 1rem;
+}
+
+.form-group label {
+  margin-bottom: 0.3rem;
+  font-weight: 600;
+}
+
+.form-group input[type="number"],
+.form-group input[type="range"],
+.form-group select {
+  padding: 0.5rem;
+  border-radius: var(--border-radius);
+  border: 1px solid #ccd7e0;
   font-size: 1rem;
-  background: #fff;
 }
 
-.form-actions { display: flex; gap: 20px; margin-top: 2rem; }
-button {
+.form-group input[type="range"] {
+  width: 100%;
+}
+
+.form-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.form-actions button {
   flex: 1;
-  padding: 1rem;
-  background: #fff;
-  border: 1px solid var(--border);
+  padding: 0.75rem;
+  border: none;
+  border-radius: var(--border-radius);
+  font-size: 1rem;
+  color: white;
+  background: var(--secondary);
   cursor: pointer;
-  letter-spacing: 0.1rem;
-  text-transform: uppercase;
-  font-size: 0.7rem;
+  transition: background var(--transition-speed);
 }
 
-#playNow { background: var(--text); color: #fff; border: none; }
+.form-actions button:hover {
+  background: var(--primary);
+}
+
+#status {
+  min-height: 80px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
 
 #statusMessage {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+/* Feedback section styling */
+#feedback {
+  margin-top: 1.5rem;
   text-align: center;
-  font-size: 0.6rem;
-  margin-top: 4rem;
-  color: var(--subtext);
-  letter-spacing: 0.2rem;
-  text-transform: uppercase;
+}
+
+.feedback-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 2rem;
+  margin-top: 0.5rem;
+}
+
+#feedback button {
+  padding: 0.6rem 1.5rem;
+  border: none;
+  border-radius: var(--border-radius);
+  font-size: 1.2rem;
+  cursor: pointer;
+  transition: background-color var(--transition-speed);
+}
+
+#likeBtn {
+  background-color: #4caf50; /* green */
+  color: white;
+}
+#likeBtn:hover {
+  background-color: #3e8e41;
+}
+
+#dislikeBtn {
+  background-color: #f44336; /* red */
+  color: white;
+}
+#dislikeBtn:hover {
+  background-color: #c0392b;
+}
+
+footer {
+  padding: 1rem;
+  text-align: center;
+  font-size: 0.9rem;
+  color: #5f6c75;
 }
