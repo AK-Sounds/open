@@ -9,17 +9,17 @@
 </head>
 <body>
   <header>
-
+    <h1>Open</h1>
   </header>
 
   <main>
-    <!-- User  Controls -->
+    <!-- Controls for user to set parameters -->
     <section id="controls">
       <h2>Song Parameters</h2>
       <form id="songForm">
         <!-- Song duration selector -->
         <div class="form-group">
-          <label for="songDuration">Song Length:</label>
+          <label for="songDuration">Song Duration:</label>
           <select id="songDuration" name="songDuration">
             <option value="60">1 minute</option>
             <option value="300">5 minutes</option>
@@ -77,10 +77,21 @@
     <section id="status">
       <h2>Status</h2>
       <p id="statusMessage">No song playing.</p>
+    </section>
 
+    <!-- Feedback section for like/dislike -->
+    <section id="feedback" style="display: none;">
+      <h2>Your Feedback</h2>
+      <div class="feedback-buttons">
+        <button type="button" id="likeBtn" class="feedback-like">👍 Like</button>
+        <button type="button" id="dislikeBtn" class="feedback-dislike">👎 Dislike</button>
+      </div>
+    </section>
 
   </main>
 
+  <footer>
+  </footer>
   <script src="script.js"></script>
 </body>
 </html>
