@@ -6,13 +6,13 @@
   
   // Random Walk State
   const scale = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21];
-  let currentStep = 2;
+  let pitchStep = 2;
+  let timbreStep = 5; // Walk state for FM brightness
 
-  // Master Volume Control
   const masterGain = audioContext.createGain();
   masterGain.connect(audioContext.destination);
 
-  // Reverb & Spectral Smearing
+  // Spectral Smearing Chain
   const reverbNode = audioContext.createConvolver();
   const reverbFilter = audioContext.createBiquadFilter();
   const reverbGain = audioContext.createGain();
@@ -20,7 +20,6 @@
   reverbFilter.frequency.value = 900; 
   reverbGain.gain.value = 0.4;
 
-  // Generate Impulse
   const length = audioContext.sampleRate * 4;
   const impulse = audioContext.createBuffer(2, length, audioContext.sampleRate);
   for (let c = 0; c < 2; c++) {
@@ -30,9 +29,9 @@
   reverbNode.buffer = impulse;
   reverbNode.connect(reverbFilter);
   reverbFilter.connect(reverbGain);
-  reverbGain.connect(masterGain); // Connect to master gain instead of destination
+  reverbGain.connect(masterGain);
 
-  function playBrightFmBell(freq, startTime) {
+  function playWalkingFmBell(freq, brightness, startTime) {
     const carrier = audioContext.createOscillator();
     const modulator = audioContext.createOscillator();
     const modGain = audioContext.createGain();
@@ -41,7 +40,10 @@
 
     carrier.frequency.value = freq;
     modulator.frequency.value = freq * 3.501; 
-    modGain.gain.setValueAtTime(freq * 6.0, startTime); 
+    
+    // Random walk applied to FM intensity (brightness)
+    const modIntensity = freq * (brightness * 1.5); 
+    modGain.gain.setValueAtTime(modIntensity, startTime); 
     modGain.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
 
     ampGain.gain.setValueAtTime(0, startTime);
@@ -51,9 +53,8 @@
     modulator.connect(modGain);
     modGain.connect(carrier.frequency);
     carrier.connect(ampGain);
-    
-    ampGain.connect(masterGain); // Connect dry to master
-    ampGain.connect(reverbNode); // Connect wet to master via reverb chain
+    ampGain.connect(masterGain);
+    ampGain.connect(reverbNode);
 
     modulator.start(startTime);
     carrier.start(startTime);
@@ -66,10 +67,7 @@
     if (audioContext.state === 'suspended') audioContext.resume();
     stopCurrentSession();
     isPlaying = true;
-    
-    // Set initial volume
     masterGain.gain.value = document.getElementById('volume').value;
-    
     const sessionStart = audioContext.currentTime;
 
     function loop(time) {
@@ -78,13 +76,15 @@
       const tone = parseFloat(document.getElementById('tone').value) || 110;
       const density = parseInt(document.getElementById('density').value) || 1;
 
-      const move = Math.floor(Math.random() * 3) - 1; 
-      currentStep = Math.max(0, Math.min(scale.length - 1, currentStep + move));
+      // Pitch Walk
+      pitchStep = Math.max(0, Math.min(scale.length - 1, pitchStep + (Math.floor(Math.random() * 3) - 1)));
+      // Timbre Walk (1 to 10 scale for brightness)
+      timbreStep = Math.max(1, Math.min(10, timbreStep + (Math.floor(Math.random() * 3) - 1)));
       
       const interval = (12 / density) + (Math.random() * 4);
-      const freq = tone * Math.pow(2, scale[currentStep] / 12);
+      const freq = tone * Math.pow(2, scale[pitchStep] / 12);
 
-      playBrightFmBell(freq, time);
+      playWalkingFmBell(freq, timbreStep, time);
       setTimeout(() => loop(time + interval), interval * 1000);
     }
     loop(audioContext.currentTime + 0.1);
@@ -94,7 +94,7 @@
     const duration = parseInt(document.getElementById('songDuration').value);
     const frequency = parseInt(document.getElementById('frequency').value);
     start(duration); 
-    document.getElementById('statusMessage').textContent = `Scheduled: Next play in ${frequency}m`;
+    document.getElementById('statusMessage').textContent = `Scheduled: Next in ${frequency}m`;
     clearTimeout(scheduledTimer);
     scheduledTimer = setTimeout(schedule, frequency * 60 * 1000);
   }
@@ -106,19 +106,15 @@
   }
 
   document.addEventListener('DOMContentLoaded', () => {
-    // Volume slider listener
     document.getElementById('volume').addEventListener('input', (e) => {
       masterGain.gain.setTargetAtTime(e.target.value, audioContext.currentTime, 0.05);
     });
-
     document.getElementById('playNow').addEventListener('click', () => {
       clearTimeout(scheduledTimer);
       document.getElementById('statusMessage').textContent = "Open and active";
       start();
     });
-
     document.getElementById('schedule').addEventListener('click', schedule);
-
     document.getElementById('stop').addEventListener('click', () => {
       clearTimeout(scheduledTimer);
       stopCurrentSession();
