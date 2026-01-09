@@ -4,11 +4,15 @@
   let isPlaying = false;
   let scheduledTimer = null;
   
-  // State for the Random Walk
-  const scale = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21]; // Expanded Pentatonic
-  let currentStep = 2; // Starting index in the scale array
+  // Random Walk State
+  const scale = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21];
+  let currentStep = 2;
 
-  // REVERB & SPECTRAL SMARING
+  // Master Volume Control
+  const masterGain = audioContext.createGain();
+  masterGain.connect(audioContext.destination);
+
+  // Reverb & Spectral Smearing
   const reverbNode = audioContext.createConvolver();
   const reverbFilter = audioContext.createBiquadFilter();
   const reverbGain = audioContext.createGain();
@@ -16,6 +20,7 @@
   reverbFilter.frequency.value = 900; 
   reverbGain.gain.value = 0.4;
 
+  // Generate Impulse
   const length = audioContext.sampleRate * 4;
   const impulse = audioContext.createBuffer(2, length, audioContext.sampleRate);
   for (let c = 0; c < 2; c++) {
@@ -25,7 +30,7 @@
   reverbNode.buffer = impulse;
   reverbNode.connect(reverbFilter);
   reverbFilter.connect(reverbGain);
-  reverbGain.connect(audioContext.destination);
+  reverbGain.connect(masterGain); // Connect to master gain instead of destination
 
   function playBrightFmBell(freq, startTime) {
     const carrier = audioContext.createOscillator();
@@ -46,8 +51,9 @@
     modulator.connect(modGain);
     modGain.connect(carrier.frequency);
     carrier.connect(ampGain);
-    ampGain.connect(audioContext.destination); 
-    ampGain.connect(reverbNode); 
+    
+    ampGain.connect(masterGain); // Connect dry to master
+    ampGain.connect(reverbNode); // Connect wet to master via reverb chain
 
     modulator.start(startTime);
     carrier.start(startTime);
@@ -60,19 +66,18 @@
     if (audioContext.state === 'suspended') audioContext.resume();
     stopCurrentSession();
     isPlaying = true;
+    
+    // Set initial volume
+    masterGain.gain.value = document.getElementById('volume').value;
+    
     const sessionStart = audioContext.currentTime;
 
     function loop(time) {
-      if (!isPlaying || (limitSeconds && (time - sessionStart) > limitSeconds)) {
-        if (limitSeconds) document.getElementById('statusMessage').textContent = "Waiting for next schedule...";
-        return;
-      }
+      if (!isPlaying || (limitSeconds && (time - sessionStart) > limitSeconds)) return;
       
       const tone = parseFloat(document.getElementById('tone').value) || 110;
       const density = parseInt(document.getElementById('density').value) || 1;
 
-      // THE RANDOM WALK LOGIC
-      // Move -1, 0, or +1 step in the scale
       const move = Math.floor(Math.random() * 3) - 1; 
       currentStep = Math.max(0, Math.min(scale.length - 1, currentStep + move));
       
@@ -85,7 +90,6 @@
     loop(audioContext.currentTime + 0.1);
   }
 
-  // ... (Rest of the scheduling and stop logic remains the same)
   function schedule() {
     const duration = parseInt(document.getElementById('songDuration').value);
     const frequency = parseInt(document.getElementById('frequency').value);
@@ -102,12 +106,19 @@
   }
 
   document.addEventListener('DOMContentLoaded', () => {
+    // Volume slider listener
+    document.getElementById('volume').addEventListener('input', (e) => {
+      masterGain.gain.setTargetAtTime(e.target.value, audioContext.currentTime, 0.05);
+    });
+
     document.getElementById('playNow').addEventListener('click', () => {
       clearTimeout(scheduledTimer);
       document.getElementById('statusMessage').textContent = "Open and active";
       start();
     });
+
     document.getElementById('schedule').addEventListener('click', schedule);
+
     document.getElementById('stop').addEventListener('click', () => {
       clearTimeout(scheduledTimer);
       stopCurrentSession();
