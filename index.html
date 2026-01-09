@@ -9,7 +9,7 @@
 <body>
   <header>
     <h1>Open</h1>
-    </header>
+  </header>
 
   <main id="ambient-layer">
     <section id="controls">
@@ -21,7 +21,12 @@
         
         <div class="form-group">
           <label for="density">Note Density (1-5):</label>
-          <input type="range" id="density" name="density" min="1" max="5" value="1" class="full-width-slider" />
+          <input type="range" id="density" name="density" min="1" max="5" value="1" class="extended-slider" />
+        </div>
+
+        <div class="form-group">
+          <label for="volume">Volume:</label>
+          <input type="range" id="volume" name="volume" min="0" max="1" step="0.01" value="0.5" class="extended-slider" />
         </div>
 
         <div class="form-group">
