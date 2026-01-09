@@ -4,63 +4,73 @@
   let isPlaying = false;
   let scheduledTimer = null;
   
-  // Random Walk State
+  // Random Walk State (Pitch & Timbre)
   const scale = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21];
   let pitchStep = 2;
-  let timbreStep = 5; // Walk state for FM brightness
+  let timbreWalk = 2.0; // Influences the FM modulation index
 
+  // Master Control
   const masterGain = audioContext.createGain();
   masterGain.connect(audioContext.destination);
 
-  // Spectral Smearing Chain
+  // LIGHT SPECTRAL PROCESSING (The "Middle Path")
+  // Filters out the high-frequency "hiss" of the reverb for a darker wash
   const reverbNode = audioContext.createConvolver();
   const reverbFilter = audioContext.createBiquadFilter();
   const reverbGain = audioContext.createGain();
   reverbFilter.type = "lowpass";
   reverbFilter.frequency.value = 900; 
-  reverbGain.gain.value = 0.4;
+  reverbGain.gain.value = 0.5;
 
-  const length = audioContext.sampleRate * 4;
+  const length = audioContext.sampleRate * 5;
   const impulse = audioContext.createBuffer(2, length, audioContext.sampleRate);
   for (let c = 0; c < 2; c++) {
     const data = impulse.getChannelData(c);
-    for (let i = 0; i < length; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 3);
+    for (let i = 0; i < length; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 2.5);
   }
   reverbNode.buffer = impulse;
   reverbNode.connect(reverbFilter);
   reverbFilter.connect(reverbGain);
   reverbGain.connect(masterGain);
 
-  function playWalkingFmBell(freq, brightness, startTime) {
-    const carrier = audioContext.createOscillator();
-    const modulator = audioContext.createOscillator();
-    const modGain = audioContext.createGain();
-    const ampGain = audioContext.createGain();
-    const duration = 5.0;
+  // Captured from Original: Multi-voice FM synthesis for shimmering character
+  function playResonatorFmBell(freq, duration, volume, startTime, brightness) {
+    // Two voices per note (Carrier/Modulator pairs) create the 'Resonator' texture
+    const voices = [
+      { modRatio: 2.0, modIndex: brightness * 1.5, amp: 1.0 },
+      { modRatio: 3.5, modIndex: brightness * 0.8, amp: 0.5 }
+    ];
 
-    carrier.frequency.value = freq;
-    modulator.frequency.value = freq * 3.501; 
-    
-    // Random walk applied to FM intensity (brightness)
-    const modIntensity = freq * (brightness * 1.5); 
-    modGain.gain.setValueAtTime(modIntensity, startTime); 
-    modGain.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+    voices.forEach((voice) => {
+      const carrier = audioContext.createOscillator();
+      const modulator = audioContext.createOscillator();
+      const modGain = audioContext.createGain();
+      const ampGain = audioContext.createGain();
 
-    ampGain.gain.setValueAtTime(0, startTime);
-    ampGain.gain.linearRampToValueAtTime(0.12, startTime + 0.02); 
-    ampGain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+      carrier.frequency.value = freq;
+      modulator.frequency.value = freq * voice.modRatio;
 
-    modulator.connect(modGain);
-    modGain.connect(carrier.frequency);
-    carrier.connect(ampGain);
-    ampGain.connect(masterGain);
-    ampGain.connect(reverbNode);
+      const deviation = freq * voice.modIndex;
+      modGain.gain.setValueAtTime(deviation, startTime);
+      modGain.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
 
-    modulator.start(startTime);
-    carrier.start(startTime);
-    modulator.stop(startTime + duration);
-    carrier.stop(startTime + duration);
-    activeNodes.push(carrier, modulator, ampGain);
+      ampGain.gain.setValueAtTime(0, startTime);
+      ampGain.gain.linearRampToValueAtTime(volume * voice.amp * 0.1, startTime + 0.01);
+      ampGain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+
+      modulator.connect(modGain);
+      modGain.connect(carrier.frequency);
+      carrier.connect(ampGain);
+      
+      ampGain.connect(masterGain); // Dry path
+      ampGain.connect(reverbNode); // Wet path through spectral filter
+
+      modulator.start(startTime);
+      carrier.start(startTime);
+      modulator.stop(startTime + duration);
+      carrier.stop(startTime + duration);
+      activeNodes.push(carrier, modulator, ampGain);
+    });
   }
 
   function start(limitSeconds = null) {
@@ -76,27 +86,27 @@
       const tone = parseFloat(document.getElementById('tone').value) || 110;
       const density = parseInt(document.getElementById('density').value) || 1;
 
-      // Pitch Walk
+      // Random Walk logic
       pitchStep = Math.max(0, Math.min(scale.length - 1, pitchStep + (Math.floor(Math.random() * 3) - 1)));
-      // Timbre Walk (1 to 10 scale for brightness)
-      timbreStep = Math.max(1, Math.min(10, timbreStep + (Math.floor(Math.random() * 3) - 1)));
+      timbreWalk = Math.max(1.0, Math.min(5.0, timbreWalk + (Math.random() * 0.4 - 0.2)));
       
-      const interval = (12 / density) + (Math.random() * 4);
+      const interval = (14 / density) + (Math.random() * 3);
       const freq = tone * Math.pow(2, scale[pitchStep] / 12);
 
-      playWalkingFmBell(freq, timbreStep, time);
+      playResonatorFmBell(freq, 6.0, 1.0, time, timbreWalk);
       setTimeout(() => loop(time + interval), interval * 1000);
     }
     loop(audioContext.currentTime + 0.1);
   }
 
+  // Scheduling & Stop logic
   function schedule() {
-    const duration = parseInt(document.getElementById('songDuration').value);
-    const frequency = parseInt(document.getElementById('frequency').value);
-    start(duration); 
-    document.getElementById('statusMessage').textContent = `Scheduled: Next in ${frequency}m`;
+    const dur = parseInt(document.getElementById('songDuration').value);
+    const freq = parseInt(document.getElementById('frequency').value);
+    start(dur); 
+    document.getElementById('statusMessage').textContent = `Next play in ${freq}m`;
     clearTimeout(scheduledTimer);
-    scheduledTimer = setTimeout(schedule, frequency * 60 * 1000);
+    scheduledTimer = setTimeout(schedule, freq * 60 * 1000);
   }
 
   function stopCurrentSession() {
@@ -111,7 +121,7 @@
     });
     document.getElementById('playNow').addEventListener('click', () => {
       clearTimeout(scheduledTimer);
-      document.getElementById('statusMessage').textContent = "Open and active";
+      document.getElementById('statusMessage').textContent = "Active";
       start();
     });
     document.getElementById('schedule').addEventListener('click', schedule);
