@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Open</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>Open</h1>
+    <p>An idle space</p>
+  </header>
+
+  <main id="ambient-layer">
+    <section id="controls">
+      <form id="songForm">
+        <div class="form-group">
+          <label for="tone">Base Tone (30-200Hz):</label>
+          <input type="number" id="tone" name="tone" min="30" max="200" value="110" />
+        </div>
+        
+        <div class="form-group">
+          <label for="density">Note Density (1-5):</label>
+          <input type="range" id="density" name="density" min="1" max="5" value="1" />
+        </div>
+
+        <div class="form-group">
+          <label for="mood">Scale:</label>
+          <select id="mood" name="mood">
+            <option value="pentatonic">Pentatonic</option>
+            <option value="minor">Minor</option>
+            <option value="major">Major</option>
+          </select>
+        </div>
+
+        <div class="form-actions">
+          <button type="button" id="playNow">Start</button>
+          <button type="button" id="stop">Silence</button>
+        </div>
+      </form>
+    </section>
+
+    <section id="status">
+      <p id="statusMessage">Click Start to begin</p>
+    </section>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
