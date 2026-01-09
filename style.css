@@ -3,7 +3,6 @@
   --panel: #fcfcfc;
   --text: #1f2937;
   --subtext: #6b7280;
-  --accent: #2563eb;
   --border: #e5e7eb;
 }
 
@@ -23,81 +22,73 @@ header h1 {
   font-weight: 300;
   letter-spacing: 0.8rem;
   text-transform: uppercase;
-  color: var(--text);
-  margin-bottom: 2rem; /* Added space since subtitle is gone */
+  margin-bottom: 2rem;
 }
 
 main {
-  width: 100%;
-  max-width: 400px;
+  width: 90%;
+  max-width: 800px; /* Doubled width */
   padding: 2rem;
 }
 
 #controls {
   background: var(--panel);
-  padding: 2rem;
+  padding: 3rem;
   border-radius: 12px;
   border: 1px solid var(--border);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
 }
 
 .form-group {
-  margin-bottom: 1.5rem;
-  width: 100%; /* Ensure container is full width */
+  margin-bottom: 2rem;
 }
 
 label { 
   display: block; 
-  font-size: 0.8rem; 
+  font-size: 0.85rem; 
   font-weight: 500; 
-  margin-bottom: 0.8rem; 
+  margin-bottom: 1rem; 
   color: var(--subtext); 
 }
 
-/* Extend the density slider across the width */
-input[type="range"].full-width-slider {
+/* Extended Sliders */
+.extended-slider {
   width: 100%;
-  margin: 0;
+  height: 8px;
   cursor: pointer;
+  accent-color: var(--text);
 }
 
 input[type="number"], select {
   width: 100%;
-  box-sizing: border-box; /* Ensures padding doesn't push width over 100% */
+  box-sizing: border-box;
   background: #ffffff;
   border: 1px solid var(--border);
   color: var(--text);
-  padding: 0.6rem;
+  padding: 0.8rem;
   border-radius: 6px;
   font-size: 1rem;
 }
 
-.form-actions { display: flex; gap: 12px; margin-top: 1.5rem; }
+.form-actions { display: flex; gap: 15px; margin-top: 2rem; }
 
 button {
   flex: 1;
-  padding: 0.75rem;
+  padding: 1rem;
   background: #ffffff;
   border: 1px solid var(--border);
   color: var(--text);
   cursor: pointer;
   border-radius: 6px;
-  font-size: 0.85rem;
-  transition: all 0.2s ease;
+  font-size: 0.9rem;
 }
 
-#playNow {
-  background: var(--text);
-  color: #ffffff;
-  border: none;
-}
+#playNow { background: var(--text); color: #ffffff; border: none; }
 
 #statusMessage {
   text-align: center;
   font-size: 0.75rem;
-  margin-top: 2.5rem;
+  margin-top: 3rem;
   color: var(--subtext);
   text-transform: uppercase;
-  letter-spacing: 0.15rem;
-  min-height: 1em; /* Prevents layout jump when text appears */
+  letter-spacing: 0.2rem;
 }
