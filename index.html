@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta http-equiv="X-UA-Compatible" content="IE=edge" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Open</title>
+  <title>Open – Generative Bell Songs</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -14,9 +14,11 @@
   </header>
 
   <main>
+    <!-- Controls for user to set parameters -->
     <section id="controls">
       <h2>Song Parameters</h2>
       <form id="songForm">
+        <!-- Song duration selector -->
         <div class="form-group">
           <label for="songDuration">Song Duration:</label>
           <select id="songDuration" name="songDuration">
@@ -26,8 +28,8 @@
           </select>
         </div>
         <div class="form-group">
-          <label for="tone">Root Tone (30-200Hz):</label>
-          <input type="number" id="tone" name="tone" min="30" max="200" step="1" value="110" required />
+          <label for="tone">Base Tone (Hz):</label>
+          <input type="number" id="tone" name="tone" min="100" max="1200" step="10" value="440" required />
         </div>
         <div class="form-group">
           <label for="mood">Mood / Scale:</label>
@@ -54,6 +56,7 @@
           <label for="volume">Volume:</label>
           <input type="range" id="volume" name="volume" min="0" max="1" step="0.01" value="0.5" />
         </div>
+        <!-- Schedule frequency selector -->
         <div class="form-group">
           <label for="frequency">Playback Frequency:</label>
           <select id="frequency" name="frequency">
@@ -71,11 +74,13 @@
       </form>
     </section>
 
+    <!-- Status display -->
     <section id="status">
       <h2>Status</h2>
       <p id="statusMessage">No song playing.</p>
     </section>
 
+    <!-- Feedback section for like/dislike -->
     <section id="feedback" style="display: none;">
       <h2>Your Feedback</h2>
       <div class="feedback-buttons">
@@ -87,7 +92,7 @@
   </main>
 
   <footer>
-    <p>Built with the Web Audio API.</p>
+    <p>Open – Generative bell songs on your schedule. Built with the Web Audio API.</p>
   </footer>
   <script src="script.js"></script>
 </body>
