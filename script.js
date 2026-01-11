@@ -9,7 +9,6 @@
     random: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
   };
 
-  // Reverb setup
   const reverbNode = audioContext.createConvolver();
   const reverbGain = audioContext.createGain();
   reverbGain.gain.value = 1.2;
@@ -48,7 +47,6 @@
 
   function playFmBell(freq, duration, volume, startTime) {
     const voices = generateRandomFmVoices();
-
     voices.forEach((voice) => {
       const carrier = audioContext.createOscillator();
       const modulator = audioContext.createOscillator();
@@ -100,7 +98,6 @@
   function stopAll() {
     activeNodes.forEach(n => { try { n.stop(); } catch(e) {} });
     activeNodes = [];
-    document.getElementById('statusMessage').textContent = "READY.";
   }
 
   document.addEventListener('DOMContentLoaded', () => {
@@ -119,7 +116,6 @@
       });
       const now = audioContext.currentTime;
       melody.forEach(n => playFmBell(n.freq, n.dur, 0.4, now + n.start));
-      document.getElementById('statusMessage').textContent = "PLAYING...";
     });
     document.getElementById('stop').addEventListener('click', stopAll);
   });
