@@ -1,10 +1,9 @@
-/* Minimal Aesthetic: Black on White */
 body {
   margin: 0;
   padding: 0;
   font-family: "Courier New", Courier, monospace;
-  background-color: #ffffff;
-  color: #000000;
+  background-color: #fff;
+  color: #000;
 }
 
 main {
@@ -22,19 +21,11 @@ h1 {
   margin-bottom: 3rem;
 }
 
-section {
-  margin-bottom: 2rem;
-}
-
 .form-group {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 1.5rem;
-}
-
-label {
-  font-size: 0.9rem;
 }
 
 input, select, button {
@@ -44,14 +35,12 @@ input, select, button {
   padding: 0.5rem;
   font-family: inherit;
   border-radius: 0;
-  outline: none;
 }
 
 input[type="range"] {
   border: none;
   accent-color: #000;
   width: 50%;
-  cursor: pointer;
 }
 
 .form-actions {
@@ -64,7 +53,6 @@ button {
   flex: 1;
   cursor: pointer;
   text-transform: uppercase;
-  transition: background 0.2s, color 0.2s;
 }
 
 button:hover {
@@ -76,11 +64,5 @@ button:hover {
   margin-top: 2rem;
   font-size: 0.8rem;
   text-transform: lowercase;
-  opacity: 0.7;
-}
-
-/* Frequency Readout styling */
-#hzReadout {
-  font-weight: bold;
-  text-decoration: underline;
+  opacity: 0.6;
 }
