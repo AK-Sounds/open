@@ -30,19 +30,20 @@
   }
   createReverb();
 
-  /** * THE RANDOM WALK:
-   * Generates unique FM parameters for the duration of the current song.
+  /** * Generates unique FM parameters.
+   * Now called for every individual note strike.
    **/
   function generateFmTimbre() {
     return {
-      // Random ratio between 1.4 and 3.5 creates different bell profiles
       modRatio: 1.4 + Math.random() * 2.1,
-      // Random depth of modulation
       modIndex: 1.0 + Math.random() * 4.0
     };
   }
 
-  function playFmBell(freq, duration, volume, startTime, timbre) {
+  function playFmBell(freq, duration, volume, startTime) {
+    // Generate a unique timbre for this specific note
+    const timbre = generateFmTimbre();
+    
     const carrier = audioContext.createOscillator();
     const modulator = audioContext.createOscillator();
     const modGain = audioContext.createGain();
@@ -51,7 +52,6 @@
     carrier.frequency.value = freq;
     modulator.frequency.value = freq * timbre.modRatio;
 
-    // The index "walks" back to 0 over the duration of the note
     modGain.gain.setValueAtTime(freq * timbre.modIndex, startTime);
     modGain.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
 
@@ -121,13 +121,12 @@
         density: document.getElementById('density').value
       };
 
-      // Each "Play" click generates a new specific timbre walk
-      const currentTimbre = generateFmTimbre();
       const melody = generateMelody(params);
       const now = audioContext.currentTime;
       
       melody.forEach(note => {
-        playFmBell(note.freq, note.dur, 0.4, now + note.start, currentTimbre);
+        // playFmBell now handles its own timbre generation internally per note
+        playFmBell(note.freq, note.dur, 0.4, now + note.start);
       });
 
       document.getElementById('statusMessage').textContent = "playing...";
