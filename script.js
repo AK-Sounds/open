@@ -1,114 +1,82 @@
-(() => {
-  const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-  
-  const limiter = audioContext.createDynamicsCompressor();
-  limiter.threshold.setValueAtTime(-3, audioContext.currentTime);
-  limiter.knee.setValueAtTime(30, audioContext.currentTime);
-  limiter.ratio.setValueAtTime(12, audioContext.currentTime);
-  limiter.connect(audioContext.destination);
+body {
+  margin: 0;
+  padding: 0;
+  /* REQUEST 1: Font changed to Helvetica */
+  font-family: Helvetica, Arial, sans-serif;
+  background-color: #fff;
+  color: #000;
+}
 
-  let activeNodes = [];
-  let isPlaying = false;
-  let nextNoteTime = 0;
-  let sessionStartTime = 0;
-  let timerId;
+main {
+  max-width: 500px;
+  margin: 15vh auto;
+  padding: 0 2rem;
+}
 
-  const scales = {
-    major: [0, 2, 4, 5, 7, 9, 11],
-    minor: [0, 2, 3, 5, 7, 8, 10],
-    pentatonic: [0, 2, 4, 7, 9],
-    random: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-  };
+h1 {
+  font-weight: normal;
+  text-transform: uppercase;
+  letter-spacing: 0.5rem;
+  border-bottom: 1px solid #000;
+  padding-bottom: 1rem;
+  margin-bottom: 3rem;
+}
 
-  const reverbNode = audioContext.createConvolver();
-  const reverbGain = audioContext.createGain();
-  reverbGain.gain.value = 0.8;
+.form-group {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
 
-  (function createReverb() {
-    const duration = 4.0, rate = audioContext.sampleRate, length = rate * duration;
-    const impulse = audioContext.createBuffer(2, length, rate);
-    for (let j = 0; j < 2; j++) {
-      const data = impulse.getChannelData(j);
-      for (let i = 0; i < length; i++) {
-        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 2);
-      }
-    }
-    reverbNode.buffer = impulse;
-    reverbNode.connect(reverbGain);
-    reverbGain.connect(limiter);
-  })();
+input, select, button {
+  background-color: #fff !important;
+  color: #000 !important;
+  border: 1px solid #000;
+  padding: 0.5rem;
+  font-family: inherit;
+  border-radius: 0;
+  outline: none;
+}
 
-  function playFmBell(freq, duration, volume, startTime) {
-    const carrier = audioContext.createOscillator();
-    const modulator = audioContext.createOscillator();
-    const modGain = audioContext.createGain();
-    const ampGain = audioContext.createGain();
+input[type="range"] {
+  border: none;
+  background: #000;
+  height: 2px;
+  width: 50%;
+  cursor: pointer;
+}
 
-    carrier.frequency.value = freq;
-    modulator.frequency.value = freq * (1.5 + Math.random() * 2);
-    modGain.gain.setValueAtTime(freq * 2, startTime);
-    modGain.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+.form-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 3rem;
+}
 
-    ampGain.gain.setValueAtTime(0.0001, startTime);
-    ampGain.gain.exponentialRampToValueAtTime(volume, startTime + 0.05);
-    ampGain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+button {
+  flex: 1;
+  cursor: pointer;
+  text-transform: uppercase;
+  background-color: #fff !important; 
+  transition: none !important;
+}
 
-    modulator.connect(modGain);
-    modGain.connect(carrier.frequency);
-    carrier.connect(ampGain);
-    ampGain.connect(limiter);
-    ampGain.connect(reverbNode);
+button:hover, 
+button:active, 
+button:focus {
+  background-color: #fff !important;
+  color: #000 !important;
+  outline: none;
+}
 
-    modulator.start(startTime);
-    carrier.start(startTime);
-    modulator.stop(startTime + duration);
-    carrier.stop(startTime + duration);
-    activeNodes.push(carrier, modulator, ampGain);
-  }
+.separator {
+  margin-top: 6rem;
+  border: 0;
+  border-top: 1px solid #000;
+}
 
-  function scheduler() {
-    if (!isPlaying) return;
-    const durationInput = document.getElementById('songDuration').value;
-    const currentTime = audioContext.currentTime;
-    
-    if (durationInput !== 'infinite') {
-      if (currentTime - sessionStartTime >= parseFloat(durationInput)) {
-        stopAll();
-        return;
-      }
-    }
-
-    while (nextNoteTime < currentTime + 0.2) {
-      const baseFreq = parseFloat(document.getElementById('tone').value);
-      const mood = document.getElementById('mood').value;
-      const density = parseFloat(document.getElementById('density').value);
-      const scale = scales[mood] || scales.major;
-      const freq = baseFreq * Math.pow(2, scale[Math.floor(Math.random() * scale.length)] / 12);
-
-      playFmBell(freq, 4.0, 0.2, nextNoteTime);
-      nextNoteTime += (1 / density) * (0.9 + Math.random() * 0.2);
-    }
-    timerId = requestAnimationFrame(scheduler);
-  }
-
-  function stopAll() {
-    isPlaying = false;
-    cancelAnimationFrame(timerId);
-    activeNodes.forEach(n => { try { n.stop(); } catch(e) {} });
-    activeNodes = [];
-  }
-
-  document.getElementById('playNow').addEventListener('click', async () => {
-    if (audioContext.state === 'suspended') await audioContext.resume();
-    stopAll();
-    isPlaying = true;
-    sessionStartTime = audioContext.currentTime;
-    nextNoteTime = audioContext.currentTime;
-    scheduler();
-  });
-
-  document.getElementById('stop').addEventListener('click', stopAll);
-  document.getElementById('tone').addEventListener('input', (e) => {
-    document.getElementById('hzReadout').textContent = e.target.value;
-  });
-})();
+#credits {
+  margin-top: 1.5rem;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+}
