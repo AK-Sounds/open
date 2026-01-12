@@ -5,7 +5,6 @@ body {
   font-family: "Courier New", Courier, monospace;
   background-color: #fff;
   color: #000;
-  /* Smooth text rendering for thin fonts */
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -13,7 +12,6 @@ body {
 /* MAIN CONTAINER */
 main {
   max-width: 500px;
-  /* Vertically center on large screens */
   margin: 15vh auto;
   padding: 0 2rem;
 }
@@ -41,7 +39,7 @@ label {
   font-size: 0.9rem;
 }
 
-/* INPUT RESET (Brutalist Style) */
+/* INPUT RESET */
 input, select, button {
   background: #fff;
   color: #000;
@@ -55,16 +53,12 @@ input, select, button {
   -webkit-appearance: none;
 }
 
-/* DROPDOWNS */
 select {
   text-align: right;
   cursor: pointer;
   padding-right: 1rem;
-  /* Removes default arrow in some browsers for cleaner look */
-  background-image: none; 
 }
 
-/* SLIDERS (Range Inputs) */
 input[type="range"] {
   border: none;
   height: 2px;
@@ -74,23 +68,19 @@ input[type="range"] {
   cursor: pointer;
 }
 
-/* Slider Thumb - Webkit (Chrome/Safari) */
 input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   height: 15px;
   width: 15px;
   background: #fff;
   border: 1px solid #000;
-  border-radius: 0; /* Square thumb */
 }
 
-/* Slider Thumb - Firefox */
 input[type="range"]::-moz-range-thumb {
   height: 15px;
   width: 15px;
   background: #fff;
   border: 1px solid #000;
-  border-radius: 0;
 }
 
 /* BUTTONS */
@@ -108,34 +98,34 @@ button {
   transition: all 0.1s ease;
 }
 
-/* Only hover state, no active/filled state */
 button:hover {
   background: #000;
   color: #fff;
 }
 
-/* FOOTER CREDITS */
-#credits {
-  margin-top: 4rem;
-  font-size: 0.75rem;
-  color: #888; /* Greyed out to recede visually */
-  text-transform: uppercase;
-  letter-spacing: 0.1rem;
-  text-align: center;
-  border-top: 1px solid #eee; /* Very subtle separation line */
-  padding-top: 1rem;
+/* LINE BREAK / SEPARATOR */
+.separator {
+  margin-top: 6rem; /* Substantial break before credits */
+  border: 0;
+  border-top: 1px solid #000;
+  width: 100%;
 }
 
-/* RESPONSIVE TWEAKS */
+/* FOOTER CREDITS */
+#credits {
+  margin-top: 1.5rem;
+  font-size: 0.75rem;
+  color: #000; 
+  text-transform: uppercase;
+  letter-spacing: 0.1rem;
+  text-align: left; /* Aligns with the brutalist/typewriter feel */
+}
+
+/* RESPONSIVE */
 @media (max-width: 600px) {
   main {
     margin: 5vh auto;
     width: 90%;
     padding: 0 1rem;
-  }
-  
-  h1 {
-    font-size: 1.2rem;
-    letter-spacing: 0.3rem;
   }
 }
