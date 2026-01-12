@@ -18,107 +18,93 @@
     random: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
   };
 
-  function createReverb() {
-    const duration = 5.0, rate = audioContext.sampleRate, length = rate * duration;
+  function createReverbBuffer() {
+    const duration = 4.0;
+    const rate = audioContext.sampleRate;
+    const length = rate * duration;
     const impulse = audioContext.createBuffer(2, length, rate);
     for (let j = 0; j < 2; j++) {
       const data = impulse.getChannelData(j);
       for (let i = 0; i < length; i++) {
-        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 1.5);
+        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 2);
       }
     }
-    reverbNode.buffer = impulse;
+    return impulse;
   }
 
   function ensureAudio() {
     if (audioContext) return;
-    
-    // 1. Initialize Context
     audioContext = new (window.AudioContext || window.webkitAudioContext)();
     
-    // 2. Create Nodes
+    // 1. Create Limiter (The "Safety Ceiling")
     limiter = audioContext.createDynamicsCompressor();
-    masterGain = audioContext.createGain();
-    reverbNode = audioContext.createConvolver();
-    reverbGain = audioContext.createGain();
-
-    // 3. Configure Limiter (Ceiling)
     limiter.threshold.setValueAtTime(-1.0, audioContext.currentTime);
     limiter.knee.setValueAtTime(0, audioContext.currentTime);
     limiter.ratio.setValueAtTime(20, audioContext.currentTime);
     limiter.attack.setValueAtTime(0.003, audioContext.currentTime);
-    limiter.release.setValueAtTime(0.1, audioContext.currentTime);
+    limiter.release.setValueAtTime(0.2, audioContext.currentTime);
 
-    // 4. Set Initial Volumes
+    // 2. Create Master Gain (The "Click Preventer")
+    masterGain = audioContext.createGain();
     masterGain.gain.value = 1;
-    reverbGain.gain.value = 1.2;
 
-    // 5. CONNECT THE CHAIN
-    // Direct path: MasterGain -> Limiter -> Destination
+    // 3. Create Reverb Path
+    reverbNode = audioContext.createConvolver();
+    reverbNode.buffer = createReverbBuffer();
+    reverbGain = audioContext.createGain();
+    reverbGain.gain.value = 0.4; // Controlled reverb volume
+
+    // 4. THE WIRING (SIGNAL FLOW)
+    // Bells -> MasterGain -> Limiter -> Destination
+    // Bells -> ReverbNode -> ReverbGain -> Limiter -> Destination
+    
     masterGain.connect(limiter);
-    
-    // Reverb path: ReverbGain -> Limiter -> Destination
     reverbGain.connect(limiter);
-    
-    // Final Output
     limiter.connect(audioContext.destination);
-
-    // 6. Generate Reverb impulse
-    createReverb();
   }
 
   function playFmBell(freq, duration, volume, startTime) {
-    if (!audioContext) return;
+    const carrier = audioContext.createOscillator();
+    const modulator = audioContext.createOscillator();
+    const modGain = audioContext.createGain();
+    const ampGain = audioContext.createGain();
 
-    const numVoices = 2 + Math.floor(Math.random() * 2);
-    const voices = [];
-    let totalAmp = 0;
+    // FM Synthesis Settings
+    const ratio = 1.5 + Math.random() * 2.0;
+    const index = 2 + Math.random() * 5;
 
-    for (let i = 0; i < numVoices; i++) {
-      const amp = Math.random();
-      voices.push({ modRatio: 1.5 + Math.random() * 2.5, modIndex: 1 + Math.random() * 4, amp });
-      totalAmp += amp;
-    }
+    carrier.frequency.setValueAtTime(freq, startTime);
+    modulator.frequency.setValueAtTime(freq * ratio, startTime);
+    modGain.gain.setValueAtTime(freq * index, startTime);
+    modGain.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
 
-    voices.forEach((voice) => {
-      const carrier = audioContext.createOscillator();
-      const modulator = audioContext.createOscillator();
-      const modGain = audioContext.createGain();
-      const ampGain = audioContext.createGain();
+    // Envelope
+    ampGain.gain.setValueAtTime(0.0001, startTime);
+    ampGain.gain.exponentialRampToValueAtTime(volume, startTime + 0.01);
+    ampGain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
 
-      carrier.frequency.value = freq;
-      modulator.frequency.value = freq * voice.modRatio;
+    modulator.connect(modGain);
+    modGain.connect(carrier.frequency);
+    carrier.connect(ampGain);
 
-      modGain.gain.setValueAtTime(freq * voice.modIndex, startTime);
-      modGain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+    // ROUTING
+    ampGain.connect(masterGain); // Direct path
+    ampGain.connect(reverbNode); // Into reverb
+    reverbNode.connect(reverbGain); // Reverb out (wired once in ensureAudio)
 
-      ampGain.gain.setValueAtTime(0.0001, startTime);
-      ampGain.gain.exponentialRampToValueAtTime((voice.amp / totalAmp) * volume, startTime + 0.01);
-      ampGain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
-
-      modulator.connect(modGain);
-      modGain.connect(carrier.frequency);
-      carrier.connect(ampGain);
-      
-      // Send signal to both the dry master path and the reverb path
-      ampGain.connect(reverbNode); // Into Reverb
-      reverbNode.connect(reverbGain); // Reverb out to gain
-      ampGain.connect(masterGain); // Direct out to master
-
-      modulator.start(startTime);
-      carrier.start(startTime);
-      modulator.stop(startTime + duration);
-      carrier.stop(startTime + duration);
-      activeNodes.push(carrier, modulator, ampGain);
-    });
-
+    modulator.start(startTime);
+    carrier.start(startTime);
+    modulator.stop(startTime + duration);
+    carrier.stop(startTime + duration);
+    
+    activeNodes.push(carrier, modulator, ampGain);
     if (activeNodes.length > 200) activeNodes.splice(0, 50);
   }
 
   function scheduler() {
     if (!isPlaying) return;
-    const durationInput = document.getElementById("songDuration").value;
     const currentTime = audioContext.currentTime;
+    const durationInput = document.getElementById("songDuration").value;
 
     if (durationInput !== "infinite" && (currentTime - sessionStartTime) >= parseFloat(durationInput)) {
       stopAll();
@@ -133,9 +119,9 @@
       
       const interval = scale[Math.floor(Math.random() * scale.length)];
       const freq = tone * Math.pow(2, interval / 12);
-      const dur = (1 / density) * 2.5;
+      const dur = (1 / density) * 2.0;
 
-      playFmBell(freq, dur, 0.4, nextNoteTime);
+      playFmBell(freq, dur, 0.3, nextNoteTime);
       nextNoteTime += (1 / density) * (0.95 + Math.random() * 0.1);
     }
     timerId = requestAnimationFrame(scheduler);
@@ -146,7 +132,44 @@
     isPlaying = false;
     cancelAnimationFrame(timerId);
 
+    // Prevent click by ramping down master volume
     const now = audioContext.currentTime;
     masterGain.gain.cancelScheduledValues(now);
     masterGain.gain.setValueAtTime(masterGain.gain.value, now);
-    master
+    masterGain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+
+    setTimeout(() => {
+      activeNodes.forEach(n => { try { n.stop(); } catch(e) {} });
+      activeNodes = [];
+      if (masterGain) masterGain.gain.setValueAtTime(1, audioContext.currentTime);
+    }, 60);
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    const toneSlider = document.getElementById("tone");
+    toneSlider.addEventListener("input", () => {
+      document.getElementById("hzReadout").textContent = toneSlider.value;
+    });
+
+    document.getElementById("playNow").addEventListener("click", async () => {
+      ensureAudio();
+      if (audioContext.state === "suspended") await audioContext.resume();
+      
+      // Snappy restart
+      isPlaying = false;
+      cancelAnimationFrame(timerId);
+      activeNodes.forEach(n => { try { n.stop(); } catch(e) {} });
+      activeNodes = [];
+      
+      masterGain.gain.cancelScheduledValues(audioContext.currentTime);
+      masterGain.gain.setValueAtTime(1, audioContext.currentTime);
+
+      isPlaying = true;
+      sessionStartTime = audioContext.currentTime;
+      nextNoteTime = audioContext.currentTime;
+      scheduler();
+    });
+
+    document.getElementById("stop").addEventListener("click", stopAll);
+  });
+})();
