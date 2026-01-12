@@ -1,21 +1,24 @@
+/* GLOBAL RESET & TYPOGRAPHY */
 body {
   margin: 0;
   padding: 0;
   font-family: "Courier New", Courier, monospace;
   background-color: #fff;
   color: #000;
-  /* Smooth text rendering */
+  /* Smooth text rendering for thin fonts */
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* MAIN CONTAINER */
 main {
   max-width: 500px;
-  /* Vertically center on large screens, margin on small */
+  /* Vertically center on large screens */
   margin: 15vh auto;
   padding: 0 2rem;
 }
 
+/* HEADINGS */
 h1 {
   font-weight: normal;
   text-transform: uppercase;
@@ -26,6 +29,7 @@ h1 {
   font-size: 1.5rem;
 }
 
+/* FORM LAYOUT */
 .form-group {
   display: flex;
   justify-content: space-between;
@@ -37,7 +41,7 @@ label {
   font-size: 0.9rem;
 }
 
-/* Reset default browser styles */
+/* INPUT RESET (Brutalist Style) */
 input, select, button {
   background: #fff;
   color: #000;
@@ -51,14 +55,16 @@ input, select, button {
   -webkit-appearance: none;
 }
 
-/* Custom select arrow logic would go here, 
-   but standard keeps it raw/brutalist */
+/* DROPDOWNS */
 select {
   text-align: right;
   cursor: pointer;
   padding-right: 1rem;
+  /* Removes default arrow in some browsers for cleaner look */
+  background-image: none; 
 }
 
+/* SLIDERS (Range Inputs) */
 input[type="range"] {
   border: none;
   height: 2px;
@@ -68,7 +74,7 @@ input[type="range"] {
   cursor: pointer;
 }
 
-/* Range Thumb Styling */
+/* Slider Thumb - Webkit (Chrome/Safari) */
 input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   height: 15px;
@@ -78,6 +84,7 @@ input[type="range"]::-webkit-slider-thumb {
   border-radius: 0; /* Square thumb */
 }
 
+/* Slider Thumb - Firefox */
 input[type="range"]::-moz-range-thumb {
   height: 15px;
   width: 15px;
@@ -86,6 +93,7 @@ input[type="range"]::-moz-range-thumb {
   border-radius: 0;
 }
 
+/* BUTTONS */
 .form-actions {
   display: flex;
   gap: 1rem;
@@ -100,16 +108,34 @@ button {
   transition: all 0.1s ease;
 }
 
+/* Only hover state, no active/filled state */
 button:hover {
   background: #000;
   color: #fff;
 }
 
-/* Mobile Responsiveness */
+/* FOOTER CREDITS */
+#credits {
+  margin-top: 4rem;
+  font-size: 0.75rem;
+  color: #888; /* Greyed out to recede visually */
+  text-transform: uppercase;
+  letter-spacing: 0.1rem;
+  text-align: center;
+  border-top: 1px solid #eee; /* Very subtle separation line */
+  padding-top: 1rem;
+}
+
+/* RESPONSIVE TWEAKS */
 @media (max-width: 600px) {
   main {
     margin: 5vh auto;
     width: 90%;
-    padding: 0;
+    padding: 0 1rem;
+  }
+  
+  h1 {
+    font-size: 1.2rem;
+    letter-spacing: 0.3rem;
   }
 }
