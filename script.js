@@ -1,19 +1,15 @@
 (() => {
   const audioContext = new (window.AudioContext || window.webkitAudioContext)();
   
-  // Master Gain (Final Volume & Fade Out)
+  // Master Gain for smooth fade outs
   const masterGain = audioContext.createGain();
   masterGain.connect(audioContext.destination);
 
-  // LIMITER (Revised for Resonance)
+  // LIMITER: Soft Knee setup to preserve reverb resonance
   const limiter = audioContext.createDynamicsCompressor();
-  // Threshold: -10dB. We start compressing earlier but gently.
-  limiter.threshold.setValueAtTime(-10, audioContext.currentTime);
-  // Knee: 40 (Maximum softness). This makes the compression invisible/musical.
-  limiter.knee.setValueAtTime(40, audioContext.currentTime);
-  // Ratio: 4:1. Gentle compression, not hard limiting.
-  limiter.ratio.setValueAtTime(4, audioContext.currentTime);
-  // Attack: 0.01. Slower attack lets the "ping" transient through before clamping.
+  limiter.threshold.setValueAtTime(-10, audioContext.currentTime); // Start acting early
+  limiter.knee.setValueAtTime(40, audioContext.currentTime);       // Very soft knee
+  limiter.ratio.setValueAtTime(4, audioContext.currentTime);       // Gentle compression
   limiter.attack.setValueAtTime(0.01, audioContext.currentTime);
   limiter.release.setValueAtTime(0.25, audioContext.currentTime);
   
@@ -34,8 +30,7 @@
 
   const reverbNode = audioContext.createConvolver();
   const reverbGain = audioContext.createGain();
-  // Boosted Reverb slightly (0.8 -> 1.0) to regain "space"
-  reverbGain.gain.value = 1.0;
+  reverbGain.gain.value = 1.0; 
 
   (function createReverb() {
     const duration = 4.0, rate = audioContext.sampleRate, length = rate * duration;
@@ -62,8 +57,7 @@
     modGain.gain.setValueAtTime(freq * 2, startTime);
     modGain.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
 
-    // LOWERED DRY VOLUME (0.2 -> 0.15)
-    // This gives the limiter more "headroom" so it doesn't squash the reverb
+    // Lower volume slightly (0.15) to give reverb headroom
     const safeVolume = 0.15;
 
     ampGain.gain.setValueAtTime(0.0001, startTime);
@@ -114,6 +108,7 @@
     isPlaying = false;
     cancelAnimationFrame(timerId);
 
+    // MASTER FADE OUT logic
     const now = audioContext.currentTime;
     const fadeDuration = 0.5;
 
@@ -130,11 +125,13 @@
   document.getElementById('playNow').addEventListener('click', async () => {
     if (audioContext.state === 'suspended') await audioContext.resume();
     
+    // Reset everything
     isPlaying = false; 
     activeNodes.forEach(n => { try { n.stop(); } catch(e) {} });
     activeNodes = [];
     cancelAnimationFrame(timerId);
 
+    // Bring volume back up for playback
     const now = audioContext.currentTime;
     masterGain.gain.cancelScheduledValues(now);
     masterGain.gain.setValueAtTime(1.0, now);
