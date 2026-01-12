@@ -1,127 +1,81 @@
-/* RESET & BASE STYLES */
 body {
-  margin: 0;
-  padding: 0;
-  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
-  background-color: #fff;
-  color: #000;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+    margin: 0;
+    padding: 0;
+    font-family: "Courier New", Courier, monospace;
+    background-color: #fff;
+    color: #000;
 }
 
 main {
-  max-width: 500px;
-  margin: 15vh auto;
-  padding: 0 2rem;
+    max-width: 500px;
+    margin: 15vh auto;
+    padding: 0 2rem;
 }
 
-/* TYPOGRAPHY */
 h1 {
-  font-size: 1.5rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.6rem;
-  border-bottom: 1px solid #000;
-  padding-bottom: 1.5rem;
-  margin-bottom: 3rem;
+    font-weight: normal;
+    text-transform: uppercase;
+    letter-spacing: 0.5rem;
+    border-bottom: 1px solid #000;
+    padding-bottom: 1rem;
+    margin-bottom: 3rem;
 }
 
-label {
-  font-size: 0.9rem;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.05rem;
-}
-
-/* FORM ELEMENTS */
 .form-group {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 2rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
 }
 
 input, select, button {
-  background-color: #fff !important;
-  color: #000 !important;
-  border: 1px solid #000;
-  padding: 0.6rem;
-  font-family: inherit; /* Ensures Helvetica is used inside inputs */
-  font-size: 0.9rem;
-  border-radius: 0;
-  outline: none;
+    background-color: #fff !important;
+    color: #000 !important;
+    border: 1px solid #000;
+    padding: 0.5rem;
+    font-family: inherit;
+    border-radius: 0;
+    outline: none;
 }
 
-/* RANGE INPUT STYLING */
 input[type="range"] {
-  -webkit-appearance: none;
-  appearance: none;
-  border: none;
-  background: transparent;
-  width: 50%;
-  cursor: pointer;
+    border: none;
+    background: #000;
+    height: 2px;
+    width: 50%;
+    cursor: pointer;
 }
 
-/* Range Track */
-input[type="range"]::-webkit-slider-runnable-track {
-  width: 100%;
-  height: 1px;
-  background: #000;
-}
-
-/* Range Thumb */
-input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  height: 16px;
-  width: 16px;
-  background: #000;
-  margin-top: -8px; /* Centers thumb on track */
-  border-radius: 0;
-}
-
-/* BUTTONS */
 .form-actions {
-  display: flex;
-  gap: 1rem;
-  margin-top: 4rem;
+    display: flex;
+    gap: 1rem;
+    margin-top: 3rem;
 }
 
 button {
-  flex: 1;
-  cursor: pointer;
-  text-transform: uppercase;
-  font-weight: 700;
-  letter-spacing: 0.1rem;
-  background-color: #fff !important; 
-  transition: background-color 0.1s ease;
+    flex: 1;
+    cursor: pointer;
+    text-transform: uppercase;
+    background-color: #fff !important;
+    transition: none !important;
 }
 
-/* Minimal feedback - subtle border thickening or invert on active */
-button:hover {
-  background-color: #f0f0f0 !important;
+button:hover,
+button:active,
+button:focus {
+    background-color: #fff !important;
+    color: #000 !important;
+    outline: none;
 }
 
-button:active {
-  background-color: #000 !important;
-  color: #fff !important;
-}
-
-/* LAYOUT HELPERS */
 .separator {
-  margin-top: 6rem;
-  border: 0;
-  border-top: 1px solid #000;
+    margin-top: 6rem;
+    border: 0;
+    border-top: 1px solid #000;
 }
 
 #credits {
-  margin-top: 2rem;
-  font-size: 0.7rem;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.1rem;
-  opacity: 0.6;
-}
-
-#hzReadout {
-  font-weight: 700;
+    margin-top: 1.5rem;
+    font-size: 0.8rem;
+    text-transform: uppercase;
 }
