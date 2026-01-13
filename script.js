@@ -19,7 +19,8 @@
 
   function readUIState() {
     return {
-      songDuration: document.getElementById("songDuration")?.value ?? "infinite",
+      // Default duration for tab version should be 1 minute
+      songDuration: document.getElementById("songDuration")?.value ?? "60",
       tone: document.getElementById("tone")?.value ?? "110",
       mood: document.getElementById("mood")?.value ?? "major",
       density: document.getElementById("density")?.value ?? "0.2",
@@ -66,10 +67,13 @@
     );
 
     try { w && w.focus && w.focus(); } catch {}
+
+    // TRANSFER SOUND: stop audio in the main tab when you open the popout
+    stopAll();
   }
 
   // =========================
-  // Audio engine (runs in whichever window hits Play)
+  // Audio engine (plays in whichever window hits Play)
   // =========================
   let audioContext = null;
   let masterGain = null;
@@ -283,7 +287,7 @@
 
     // Buttons
     document.getElementById("playNow")?.addEventListener("click", async () => {
-      await startFromUI(); // PLAY really plays (in this window)
+      await startFromUI(); // Play plays in the current window
     });
 
     document.getElementById("stop")?.addEventListener("click", () => {
@@ -291,7 +295,7 @@
     });
 
     document.getElementById("popOut")?.addEventListener("click", () => {
-      openPopout(); // Open Player just opens the popout
+      openPopout(); // Open Player opens popout and stops main (transfer sound)
     });
 
     // Cross-window: apply settings when the other window changes them
