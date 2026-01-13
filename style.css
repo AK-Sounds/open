@@ -94,7 +94,7 @@ button:focus {
 }
 
 /* =========================
-   Popout Button + Popout Mode
+   Popout Button
    ========================= */
 
 .popout-container {
@@ -108,7 +108,10 @@ button:focus {
   font-size: 0.9rem;
 }
 
-/* Popout window layout tweaks */
+/* =========================
+   Popout Mode Layout + UI
+   ========================= */
+
 body.popout main {
   margin: 2rem auto;
   max-width: 420px;
@@ -118,7 +121,29 @@ body.popout h1 {
   margin-bottom: 1.5rem;
 }
 
+/* Hide separator + credits in popout */
 body.popout .separator,
 body.popout #credits {
   display: none;
+}
+
+/* Hide Pop Out button in popout */
+body.popout #popOutContainer {
+  display: none;
+}
+
+/* Button label swapping:
+   - Main window: show "Open Player"
+   - Popout window: show "Play"
+*/
+.label-popout {
+  display: none;
+}
+
+body.popout .label-main {
+  display: none;
+}
+
+body.popout .label-popout {
+  display: inline;
 }
