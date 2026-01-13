@@ -175,5 +175,3 @@
     document.getElementById("stop").addEventListener("click", stopAll);
   });
 })();
-
-```
