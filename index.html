@@ -9,7 +9,7 @@
 <body>
   <main>
     <h1>Open</h1>
-    
+
     <section id="controls">
       <form id="songForm">
         <div class="form-group">
@@ -19,7 +19,7 @@
             <option value="300">5 minutes</option>
             <option value="600">10 minutes</option>
             <option value="1800">30 minutes</option>
-            <option value="infinite">Infinite</option>
+            <option value="infinite" selected>Infinite</option>
           </select>
         </div>
 
@@ -31,7 +31,7 @@
         <div class="form-group">
           <label for="mood">Mood:</label>
           <select id="mood">
-            <option value="major">Major</option>
+            <option value="major" selected>Major</option>
             <option value="minor">Minor</option>
             <option value="pentatonic">Pentatonic</option>
             <option value="random">Random</option>
@@ -47,16 +47,15 @@
           <button type="button" id="playNow">Play</button>
           <button type="button" id="stop">Stop</button>
         </div>
-        
+
         <div class="popout-container" id="popOutContainer">
           <button type="button" id="popOut" class="secondary-btn">Pop Out Player ↗</button>
         </div>
-
       </form>
     </section>
 
     <hr class="separator" />
-    
+
     <footer id="credits">
       Aaron Koppel
     </footer>
