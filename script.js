@@ -1,17 +1,88 @@
 (() => {
+  // =========================
+  // Popout state + helpers
+  // =========================
+  const STATE_KEY = "open_popout_state_v1";
+
+  function isPopoutMode() {
+    return window.location.hash === "#popout";
+  }
+
+  function safeJsonParse(raw) {
+    try { return JSON.parse(raw); } catch { return null; }
+  }
+
+  function loadStateFromStorage() {
+    const raw = localStorage.getItem(STATE_KEY);
+    return raw ? safeJsonParse(raw) : null;
+  }
+
+  function readUIState() {
+    return {
+      songDuration: document.getElementById("songDuration")?.value ?? "infinite",
+      tone: document.getElementById("tone")?.value ?? "110",
+      mood: document.getElementById("mood")?.value ?? "major",
+      density: document.getElementById("density")?.value ?? "0.2",
+      play: false,
+      updatedAt: Date.now()
+    };
+  }
+
+  function applyUIState(state) {
+    if (!state) return;
+
+    const sd = document.getElementById("songDuration");
+    const tone = document.getElementById("tone");
+    const mood = document.getElementById("mood");
+    const density = document.getElementById("density");
+    const hzReadout = document.getElementById("hzReadout");
+
+    if (sd && state.songDuration != null) sd.value = state.songDuration;
+    if (tone && state.tone != null) {
+      tone.value = state.tone;
+      if (hzReadout) hzReadout.textContent = state.tone;
+    }
+    if (mood && state.mood != null) mood.value = state.mood;
+    if (density && state.density != null) density.value = state.density;
+  }
+
+  function saveStateToStorage(overrides = {}) {
+    const next = { ...readUIState(), ...overrides, updatedAt: Date.now() };
+    try { localStorage.setItem(STATE_KEY, JSON.stringify(next)); } catch(e) {}
+    return next;
+  }
+
+  function openPopout() {
+    // Tell popout to play using current settings
+    saveStateToStorage({ play: true });
+
+    const url = `${window.location.pathname}#popout`;
+    // Minimal chrome: no toolbars, small size
+    window.open(
+      url,
+      "open_popout_player",
+      "width=480,height=620,menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=yes"
+    );
+
+    // Prevent double playback if main window is currently playing
+    stopAll();
+  }
+
+  // =========================
+  // Audio engine (unchanged behavior, lazy-init)
+  // =========================
   let audioContext = null;
   let masterGain = null;
   let limiter = null;
   let reverbNode = null;
   let reverbGain = null;
+
   let activeNodes = [];
   let isPlaying = false;
   let nextNoteTime = 0;
   let sessionStartTime = 0;
-  
-  let scheduleAheadTime = 0.5; 
-  let lookahead = 100; 
-  let timerId;
+
+  const scheduleAheadTime = 0.5;
 
   const scales = {
     major: [0, 2, 4, 5, 7, 9, 11],
@@ -22,14 +93,19 @@
 
   function createReverb() {
     if (!audioContext) return;
-    const duration = 5.0, rate = audioContext.sampleRate, length = rate * duration;
+
+    const duration = 5.0;
+    const rate = audioContext.sampleRate;
+    const length = rate * duration;
+
     const impulse = audioContext.createBuffer(2, length, rate);
-    for (let j = 0; j < 2; j++) {
-      const data = impulse.getChannelData(j);
+    for (let ch = 0; ch < 2; ch++) {
+      const data = impulse.getChannelData(ch);
       for (let i = 0; i < length; i++) {
         data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 1.5);
       }
     }
+
     reverbNode.buffer = impulse;
     reverbNode.connect(reverbGain);
     reverbGain.connect(limiter);
@@ -37,12 +113,13 @@
 
   function ensureAudio() {
     if (audioContext) return;
+
     audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    
+
     limiter = audioContext.createDynamicsCompressor();
-    limiter.threshold.setValueAtTime(-1.0, audioContext.currentTime); 
-    limiter.knee.setValueAtTime(0, audioContext.currentTime);          
-    limiter.ratio.setValueAtTime(20, audioContext.currentTime);       
+    limiter.threshold.setValueAtTime(-1.0, audioContext.currentTime);
+    limiter.knee.setValueAtTime(0, audioContext.currentTime);
+    limiter.ratio.setValueAtTime(20, audioContext.currentTime);
     limiter.connect(audioContext.destination);
 
     masterGain = audioContext.createGain();
@@ -52,6 +129,7 @@
     reverbNode = audioContext.createConvolver();
     reverbGain = audioContext.createGain();
     reverbGain.gain.value = 1.2;
+
     createReverb();
   }
 
@@ -59,9 +137,14 @@
     const numVoices = 2 + Math.floor(Math.random() * 2);
     const voices = [];
     let totalAmp = 0;
+
     for (let i = 0; i < numVoices; i++) {
       const amp = Math.random();
-      voices.push({ modRatio: 1.5 + Math.random() * 2.5, modIndex: 1 + Math.random() * 4, amp });
+      voices.push({
+        modRatio: 1.5 + Math.random() * 2.5,
+        modIndex: 1 + Math.random() * 4,
+        amp
+      });
       totalAmp += amp;
     }
 
@@ -84,10 +167,162 @@
       modulator.connect(modGain);
       modGain.connect(carrier.frequency);
       carrier.connect(ampGain);
+
       ampGain.connect(reverbNode);
-      ampGain.connect(masterGain); 
+      ampGain.connect(masterGain);
 
       modulator.start(startTime);
       carrier.start(startTime);
       modulator.stop(startTime + duration);
-      carrier.stop
+      carrier.stop(startTime + duration);
+
+      activeNodes.push(carrier, modulator, ampGain);
+    });
+
+    // Keep the array from growing forever (graph nodes will end naturally via stop)
+    if (activeNodes.length > 200) activeNodes.splice(0, 80);
+  }
+
+  let rafId = null;
+
+  function scheduler() {
+    if (!isPlaying) return;
+
+    const durationInput = document.getElementById("songDuration").value;
+    const currentTime = audioContext.currentTime;
+
+    if (durationInput !== "infinite") {
+      const elapsed = currentTime - sessionStartTime;
+      if (elapsed >= parseFloat(durationInput)) {
+        stopAll();
+        saveStateToStorage({ play: false });
+        return;
+      }
+    }
+
+    while (nextNoteTime < currentTime + scheduleAheadTime) {
+      const baseFreq = parseFloat(document.getElementById("tone").value);
+      const mood = document.getElementById("mood").value;
+      const density = parseFloat(document.getElementById("density").value);
+      const scale = scales[mood] || scales.major;
+
+      const interval = scale[Math.floor(Math.random() * scale.length)];
+      const freq = baseFreq * Math.pow(2, interval / 12);
+
+      const dur = (1 / density) * 2.5;
+
+      playFmBell(freq, dur, 0.4, nextNoteTime);
+
+      const drift = 0.95 + (Math.random() * 0.1);
+      nextNoteTime += (1 / density) * drift;
+    }
+
+    rafId = requestAnimationFrame(scheduler);
+  }
+
+  async function startFromUI() {
+    ensureAudio();
+
+    if (audioContext.state === "suspended") {
+      await audioContext.resume();
+    }
+
+    // Ensure master gain is up (in case stopAll faded it)
+    masterGain.gain.setValueAtTime(1, audioContext.currentTime);
+
+    stopAll();
+    isPlaying = true;
+
+    sessionStartTime = audioContext.currentTime;
+    nextNoteTime = audioContext.currentTime;
+
+    scheduler();
+  }
+
+  function stopAll() {
+    if (!isPlaying || !audioContext) return;
+
+    isPlaying = false;
+    if (rafId) cancelAnimationFrame(rafId);
+
+    const now = audioContext.currentTime;
+
+    // short fade to avoid click
+    masterGain.gain.setValueAtTime(masterGain.gain.value, now);
+    masterGain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+
+    setTimeout(() => {
+      activeNodes.forEach(n => { try { n.stop(); } catch(e) {} });
+      activeNodes = [];
+      masterGain.gain.setValueAtTime(1, audioContext.currentTime);
+    }, 60);
+  }
+
+  // =========================
+  // UI wiring + popout syncing
+  // =========================
+  document.addEventListener("DOMContentLoaded", () => {
+    // Popout styling marker (optional if you add CSS)
+    if (isPopoutMode()) document.body.classList.add("popout");
+
+    // Restore saved state (if any) for both main and popout
+    const saved = loadStateFromStorage();
+    applyUIState(saved);
+
+    const toneSlider = document.getElementById("tone");
+    const hzReadout = document.getElementById("hzReadout");
+
+    if (toneSlider && hzReadout) {
+      hzReadout.textContent = toneSlider.value;
+      toneSlider.addEventListener("input", () => {
+        hzReadout.textContent = toneSlider.value;
+        saveStateToStorage();
+      });
+    }
+
+    // When controls change, persist so popout can mirror
+    ["songDuration", "mood", "density"].forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener("change", () => saveStateToStorage());
+      el.addEventListener("input", () => saveStateToStorage());
+    });
+
+    // Play/Stop
+    document.getElementById("playNow").addEventListener("click", async () => {
+      await startFromUI();
+      saveStateToStorage({ play: true });
+    });
+
+    document.getElementById("stop").addEventListener("click", () => {
+      stopAll();
+      saveStateToStorage({ play: false });
+    });
+
+    // Popout button
+    const popBtn = document.getElementById("popOut");
+    if (popBtn) {
+      popBtn.addEventListener("click", () => openPopout());
+    }
+
+    // Popout should auto-start if storage says play=true
+    if (isPopoutMode()) {
+      const st = loadStateFromStorage();
+      if (st?.play) startFromUI();
+    }
+
+    // Listen for changes coming from the other window
+    window.addEventListener("storage", (e) => {
+      if (e.key !== STATE_KEY) return;
+
+      const st = loadStateFromStorage();
+      applyUIState(st);
+
+      // Only the popout should auto-react to play toggles
+      if (isPopoutMode()) {
+        if (st?.play && !isPlaying) startFromUI();
+        if (st && st.play === false && isPlaying) stopAll();
+      }
+    });
+  });
+})();
