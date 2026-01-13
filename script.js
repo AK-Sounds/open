@@ -1,20 +1,23 @@
 (() => {
-  // =========================
-  // Popout state + helpers
-  // =========================
-  const STATE_KEY = "open_popout_state_v1";
+  // ============================================================
+  //  POP-OUT ONLY PLAYER MODE (B)
+  //  - Main window: controls + opens popout
+  //  - Popout window: the only place audio plays
+  // ============================================================
+
+  const STATE_KEY = "open_popout_state_v2";
 
   function isPopoutMode() {
     return window.location.hash === "#popout";
   }
 
-  function safeJsonParse(raw) {
+  function safeParse(raw) {
     try { return JSON.parse(raw); } catch { return null; }
   }
 
-  function loadStateFromStorage() {
+  function loadState() {
     const raw = localStorage.getItem(STATE_KEY);
-    return raw ? safeJsonParse(raw) : null;
+    return raw ? safeParse(raw) : null;
   }
 
   function readUIState() {
@@ -23,6 +26,7 @@
       tone: document.getElementById("tone")?.value ?? "110",
       mood: document.getElementById("mood")?.value ?? "major",
       density: document.getElementById("density")?.value ?? "0.2",
+      // play flag is a "command" for popout (main never plays)
       play: false,
       updatedAt: Date.now()
     };
@@ -38,39 +42,44 @@
     const hzReadout = document.getElementById("hzReadout");
 
     if (sd && state.songDuration != null) sd.value = state.songDuration;
+
     if (tone && state.tone != null) {
       tone.value = state.tone;
       if (hzReadout) hzReadout.textContent = state.tone;
     }
+
     if (mood && state.mood != null) mood.value = state.mood;
+
     if (density && state.density != null) density.value = state.density;
   }
 
-  function saveStateToStorage(overrides = {}) {
+  function saveState(overrides = {}) {
     const next = { ...readUIState(), ...overrides, updatedAt: Date.now() };
-    try { localStorage.setItem(STATE_KEY, JSON.stringify(next)); } catch(e) {}
+    try { localStorage.setItem(STATE_KEY, JSON.stringify(next)); } catch {}
     return next;
   }
 
   function openPopout() {
-    // Tell popout to play using current settings
-    saveStateToStorage({ play: true });
+    // Save settings only; DO NOT trigger playback
+    saveState({ play: false });
 
     const url = `${window.location.pathname}#popout`;
-    // Minimal chrome: no toolbars, small size
-    window.open(
+
+    // Re-use same named window if already open
+    const w = window.open(
       url,
       "open_popout_player",
       "width=480,height=620,menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=yes"
     );
 
-    // Prevent double playback if main window is currently playing
-    stopAll();
+    // Best effort focus
+    try { w && w.focus && w.focus(); } catch {}
   }
 
-  // =========================
-  // Audio engine (unchanged behavior, lazy-init)
-  // =========================
+  // ============================================================
+  //  AUDIO ENGINE (only runs in popout mode)
+  // ============================================================
+
   let audioContext = null;
   let masterGain = null;
   let limiter = null;
@@ -81,6 +90,7 @@
   let isPlaying = false;
   let nextNoteTime = 0;
   let sessionStartTime = 0;
+  let rafId = null;
 
   const scheduleAheadTime = 0.5;
 
@@ -90,26 +100,6 @@
     pentatonic: [0, 2, 4, 7, 9],
     random: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
   };
-
-  function createReverb() {
-    if (!audioContext) return;
-
-    const duration = 5.0;
-    const rate = audioContext.sampleRate;
-    const length = rate * duration;
-
-    const impulse = audioContext.createBuffer(2, length, rate);
-    for (let ch = 0; ch < 2; ch++) {
-      const data = impulse.getChannelData(ch);
-      for (let i = 0; i < length; i++) {
-        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 1.5);
-      }
-    }
-
-    reverbNode.buffer = impulse;
-    reverbNode.connect(reverbGain);
-    reverbGain.connect(limiter);
-  }
 
   function ensureAudio() {
     if (audioContext) return;
@@ -131,6 +121,26 @@
     reverbGain.gain.value = 1.2;
 
     createReverb();
+  }
+
+  function createReverb() {
+    if (!audioContext) return;
+
+    const duration = 5.0;
+    const rate = audioContext.sampleRate;
+    const length = rate * duration;
+
+    const impulse = audioContext.createBuffer(2, length, rate);
+    for (let ch = 0; ch < 2; ch++) {
+      const data = impulse.getChannelData(ch);
+      for (let i = 0; i < length; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 1.5);
+      }
+    }
+
+    reverbNode.buffer = impulse;
+    reverbNode.connect(reverbGain);
+    reverbGain.connect(limiter);
   }
 
   function playFmBell(freq, duration, volume, startTime) {
@@ -179,11 +189,8 @@
       activeNodes.push(carrier, modulator, ampGain);
     });
 
-    // Keep the array from growing forever (graph nodes will end naturally via stop)
-    if (activeNodes.length > 200) activeNodes.splice(0, 80);
+    if (activeNodes.length > 250) activeNodes.splice(0, 120);
   }
-
-  let rafId = null;
 
   function scheduler() {
     if (!isPlaying) return;
@@ -194,8 +201,7 @@
     if (durationInput !== "infinite") {
       const elapsed = currentTime - sessionStartTime;
       if (elapsed >= parseFloat(durationInput)) {
-        stopAll();
-        saveStateToStorage({ play: false });
+        stopAll(true);
         return;
       }
     }
@@ -221,107 +227,139 @@
   }
 
   async function startFromUI() {
+    if (!isPopoutMode()) return; // IMPORTANT: only popout plays
+
     ensureAudio();
 
     if (audioContext.state === "suspended") {
       await audioContext.resume();
     }
 
-    // Ensure master gain is up (in case stopAll faded it)
+    // Reset any previous fade
     masterGain.gain.setValueAtTime(1, audioContext.currentTime);
 
-    stopAll();
-    isPlaying = true;
+    stopAll(false);
 
+    isPlaying = true;
     sessionStartTime = audioContext.currentTime;
     nextNoteTime = audioContext.currentTime;
 
     scheduler();
+
+    // Broadcast: playing
+    saveState({ play: true });
   }
 
-  function stopAll() {
-    if (!isPlaying || !audioContext) return;
+  function stopAll(broadcast = true) {
+    if (!audioContext) {
+      if (broadcast) saveState({ play: false });
+      return;
+    }
+    if (!isPlaying) {
+      if (broadcast) saveState({ play: false });
+      return;
+    }
 
     isPlaying = false;
     if (rafId) cancelAnimationFrame(rafId);
 
     const now = audioContext.currentTime;
 
-    // short fade to avoid click
+    // Fade to avoid click
     masterGain.gain.setValueAtTime(masterGain.gain.value, now);
     masterGain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
 
     setTimeout(() => {
-      activeNodes.forEach(n => { try { n.stop(); } catch(e) {} });
+      activeNodes.forEach(n => { try { n.stop(); } catch {} });
       activeNodes = [];
       masterGain.gain.setValueAtTime(1, audioContext.currentTime);
     }, 60);
+
+    if (broadcast) saveState({ play: false });
   }
 
-  // =========================
-  // UI wiring + popout syncing
-  // =========================
+  // ============================================================
+  //  UI wiring
+  // ============================================================
+
   document.addEventListener("DOMContentLoaded", () => {
-    // Popout styling marker (optional if you add CSS)
+    // Optional: mark popout for CSS layout tweaks
     if (isPopoutMode()) document.body.classList.add("popout");
 
-    // Restore saved state (if any) for both main and popout
-    const saved = loadStateFromStorage();
+    // Load and apply any saved settings
+    const saved = loadState();
     applyUIState(saved);
 
+    // Keep Hz readout in sync
     const toneSlider = document.getElementById("tone");
     const hzReadout = document.getElementById("hzReadout");
-
     if (toneSlider && hzReadout) {
       hzReadout.textContent = toneSlider.value;
       toneSlider.addEventListener("input", () => {
         hzReadout.textContent = toneSlider.value;
-        saveStateToStorage();
+        saveState({ play: loadState()?.play ?? false });
       });
     }
 
-    // When controls change, persist so popout can mirror
+    // Persist settings changes (both windows)
     ["songDuration", "mood", "density"].forEach(id => {
       const el = document.getElementById(id);
       if (!el) return;
-      el.addEventListener("change", () => saveStateToStorage());
-      el.addEventListener("input", () => saveStateToStorage());
+      el.addEventListener("input", () => saveState({ play: loadState()?.play ?? false }));
+      el.addEventListener("change", () => saveState({ play: loadState()?.play ?? false }));
     });
 
-    // Play/Stop
-    document.getElementById("playNow").addEventListener("click", async () => {
-      await startFromUI();
-      saveStateToStorage({ play: true });
-    });
-
-    document.getElementById("stop").addEventListener("click", () => {
-      stopAll();
-      saveStateToStorage({ play: false });
-    });
-
-    // Popout button
+    // Buttons
+    const playBtn = document.getElementById("playNow");
+    const stopBtn = document.getElementById("stop");
     const popBtn = document.getElementById("popOut");
-    if (popBtn) {
-      popBtn.addEventListener("click", () => openPopout());
+
+    // MAIN WINDOW:
+    // - Play: open/focus popout (does NOT start audio)
+    // - Stop: sends stop command to popout
+    if (!isPopoutMode()) {
+      playBtn?.addEventListener("click", () => {
+        openPopout();
+        // Do not auto-play. User presses Play inside the popout.
+      });
+
+      stopBtn?.addEventListener("click", () => {
+        // Tell popout to stop
+        saveState({ play: false });
+      });
+
+      popBtn?.addEventListener("click", () => openPopout());
     }
 
-    // Popout should auto-start if storage says play=true
+    // POPOUT WINDOW:
+    // - Play: starts audio
+    // - Stop: stops audio
     if (isPopoutMode()) {
-      const st = loadStateFromStorage();
-      if (st?.play) startFromUI();
+      playBtn?.addEventListener("click", async () => {
+        await startFromUI();
+      });
+
+      stopBtn?.addEventListener("click", () => stopAll(true));
+
+      popBtn?.addEventListener("click", () => {
+        // In popout, the "Pop Out" button is redundant. You can hide it with CSS if desired.
+        // We'll just focus this window.
+        try { window.focus(); } catch {}
+      });
     }
 
-    // Listen for changes coming from the other window
+    // Cross-window syncing (settings + stop command)
     window.addEventListener("storage", (e) => {
       if (e.key !== STATE_KEY) return;
 
-      const st = loadStateFromStorage();
+      const st = loadState();
       applyUIState(st);
 
-      // Only the popout should auto-react to play toggles
+      // Only popout responds to play/stop flags.
       if (isPopoutMode()) {
-        if (st?.play && !isPlaying) startFromUI();
-        if (st && st.play === false && isPlaying) stopAll();
+        if (st?.play === false && isPlaying) stopAll(false);
+        // IMPORTANT: do NOT auto-start from storage (gesture restriction).
+        // User must click Play in the popout.
       }
     });
   });
