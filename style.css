@@ -94,7 +94,7 @@ button:focus {
 }
 
 /* =========================
-   Popout Button
+   Open Player button
    ========================= */
 
 .popout-container {
@@ -102,7 +102,7 @@ button:focus {
   display: flex;
 }
 
-/* Secondary style for popout button */
+/* Secondary style for Open Player button */
 .secondary-btn {
   border: 1px dashed #000;
   font-size: 0.9rem;
@@ -127,23 +127,7 @@ body.popout #credits {
   display: none;
 }
 
-/* Hide Pop Out button in popout */
+/* Hide Open Player button in popout (already in the player) */
 body.popout #popOutContainer {
   display: none;
-}
-
-/* Button label swapping:
-   - Main window: show "Open Player"
-   - Popout window: show "Play"
-*/
-.label-popout {
-  display: none;
-}
-
-body.popout .label-main {
-  display: none;
-}
-
-body.popout .label-popout {
-  display: inline;
 }
