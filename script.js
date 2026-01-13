@@ -8,7 +8,10 @@
   let isPlaying = false;
   let nextNoteTime = 0;
   let sessionStartTime = 0;
-  let scheduleAheadTime = 0.2;
+  
+  // NOTE: Increased buffer time to 0.5s to handle background tabs
+  let scheduleAheadTime = 0.5; 
+  let lookahead = 100; // Check every 100ms
   let timerId;
 
   const scales = {
@@ -19,6 +22,7 @@
   };
 
   function createReverb() {
+    if (!audioContext) return;
     const duration = 5.0, rate = audioContext.sampleRate, length = rate * duration;
     const impulse = audioContext.createBuffer(2, length, rate);
     for (let j = 0; j < 2; j++) {
@@ -37,7 +41,7 @@
     if (audioContext) return;
     audioContext = new (window.AudioContext || window.webkitAudioContext)();
     
-    // 1. Initialize Limiter (DynamicsCompressor)
+    // 1. Initialize Limiter
     limiter = audioContext.createDynamicsCompressor();
     limiter.threshold.setValueAtTime(-1.0, audioContext.currentTime); 
     limiter.knee.setValueAtTime(0, audioContext.currentTime);          
@@ -46,7 +50,7 @@
     limiter.release.setValueAtTime(0.1, audioContext.currentTime);    
     limiter.connect(audioContext.destination);
 
-    // 2. Master Gain (Controls the dry signal)
+    // 2. Master Gain (Dry signal)
     masterGain = audioContext.createGain();
     masterGain.connect(limiter);
     masterGain.gain.value = 1;
@@ -90,7 +94,7 @@
       
       // Connect to Reverb (Independent path)
       ampGain.connect(reverbNode);
-      // Connect to Master (Dry path that we can fade)
+      // Connect to Master (Dry path)
       ampGain.connect(masterGain); 
 
       modulator.start(startTime);
@@ -100,7 +104,7 @@
       activeNodes.push(carrier, modulator, ampGain);
     });
     
-    // Cleanup active nodes array to prevent memory leaks
+    // Cleanup active nodes array
     if (activeNodes.length > 200) activeNodes.splice(0, 50);
   }
 
@@ -114,32 +118,35 @@
       return;
     }
 
+    // Schedule notes up to scheduleAheadTime
     while (nextNoteTime < currentTime + scheduleAheadTime) {
       const scale = scales[document.getElementById("mood").value] || scales.major;
       const freq = parseFloat(document.getElementById("tone").value) * Math.pow(2, scale[Math.floor(Math.random() * scale.length)] / 12);
       const density = parseFloat(document.getElementById("density").value);
+      
       playFmBell(freq, (1 / density) * 2.5, 0.4, nextNoteTime);
       nextNoteTime += (1 / density) * (0.95 + Math.random() * 0.1);
     }
-    timerId = requestAnimationFrame(scheduler);
+    
+    // NOTE: Using setTimeout instead of requestAnimationFrame for background play
+    timerId = setTimeout(scheduler, lookahead);
   }
 
   function stopAll() {
     if (!isPlaying || !audioContext) return;
     isPlaying = false;
-    cancelAnimationFrame(timerId);
+    
+    // Clear the timeout
+    clearTimeout(timerId);
 
     const now = audioContext.currentTime;
 
     // 1. Slow Fade of the "Dry" signal (4 seconds)
-    // We leave the reverb path alone so it rings out naturally.
     masterGain.gain.cancelScheduledValues(now);
     masterGain.gain.setValueAtTime(masterGain.gain.value, now);
     masterGain.gain.exponentialRampToValueAtTime(0.0001, now + 4);
 
     // 2. Delayed Cleanup
-    // We wait 5 seconds before clearing nodes to ensure the fade is done
-    // and the reverb tail has mostly decayed.
     setTimeout(() => {
       if (!isPlaying) {
         activeNodes = [];
@@ -156,13 +163,13 @@
       if (audioContext.state === "suspended") await audioContext.resume();
       
       isPlaying = false;
-      cancelAnimationFrame(timerId);
+      clearTimeout(timerId);
       
-      // Stop previous sounds immediately if we are hitting Play again
+      // Stop previous sounds immediately if hitting Play again
       activeNodes.forEach(n => { try { n.stop(); } catch(e) {} });
       activeNodes = [];
       
-      // Reset Master Gain immediately to full volume
+      // Reset Master Gain
       masterGain.gain.cancelScheduledValues(audioContext.currentTime);
       masterGain.gain.setValueAtTime(1, audioContext.currentTime);
 
