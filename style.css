@@ -2,9 +2,7 @@
    Open — Full Stylesheet
    ========================= */
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
 body {
   margin: 0;
@@ -20,22 +18,13 @@ main {
   padding: 0 2rem;
 }
 
-h1 {
-  font-weight: normal;
-  text-transform: uppercase;
-  letter-spacing: 0.5rem;
-  border-bottom: 1px solid #000;
-  padding-bottom: 1rem;
-  margin-bottom: 2rem;
-}
-
 /* =========================
    MAIN TAB: launch-only
    ========================= */
 
 .launch-actions {
   display: flex;
-  margin-top: 1rem;
+  margin-top: 2rem;
 }
 
 /* =========================
@@ -49,9 +38,7 @@ h1 {
   margin-bottom: 1.5rem;
 }
 
-input,
-select,
-button {
+input, select, button {
   background-color: #fff !important;
   color: #000 !important;
   border: 1px solid #000;
@@ -92,7 +79,7 @@ button:focus {
   outline: none;
 }
 
-/* Secondary style for Open button */
+/* Launch button style */
 .secondary-btn {
   border: 1px dashed #000;
   font-size: 0.95rem;
@@ -115,19 +102,12 @@ button:focus {
    Mode switching
    ========================= */
 
-/* Default (main tab): hide controls */
-#controls {
-  display: none;
-}
+/* Default (main tab): hide player controls */
+#controls { display: none; }
 
 /* Popout mode: show controls, hide launch-only */
-body.popout #controls {
-  display: block;
-}
-
-body.popout #launchOnly {
-  display: none;
-}
+body.popout #controls { display: block; }
+body.popout #launchOnly { display: none; }
 
 /* Popout layout tweaks */
 body.popout main {
