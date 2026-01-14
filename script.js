@@ -1,8 +1,5 @@
 (() => {
-  // =========================
-  // Shared state for settings sync
-  // =========================
-  const STATE_KEY = "open_shared_settings_v3";
+  const STATE_KEY = "open_player_settings_v5";
 
   function isPopoutMode() {
     return window.location.hash === "#popout";
@@ -17,9 +14,12 @@
     return raw ? safeParse(raw) : null;
   }
 
-  function readUIState() {
+  function saveState(state) {
+    try { localStorage.setItem(STATE_KEY, JSON.stringify(state)); } catch {}
+  }
+
+  function readControls() {
     return {
-      // Default duration for tab version should be 1 minute
       songDuration: document.getElementById("songDuration")?.value ?? "60",
       tone: document.getElementById("tone")?.value ?? "110",
       mood: document.getElementById("mood")?.value ?? "major",
@@ -28,7 +28,7 @@
     };
   }
 
-  function applyUIState(state) {
+  function applyControls(state) {
     if (!state) return;
 
     const sd = document.getElementById("songDuration");
@@ -49,17 +49,11 @@
     if (density && state.density != null) density.value = state.density;
   }
 
-  function saveState() {
-    const next = { ...readUIState(), updatedAt: Date.now() };
-    try { localStorage.setItem(STATE_KEY, JSON.stringify(next)); } catch {}
-    return next;
-  }
-
   function openPopout() {
-    // Save settings ONLY. No autoplay.
-    saveState();
+    // Works reliably on GitHub Pages: keep current URL, strip existing hash, add #popout
+    const base = window.location.href.split("#")[0];
+    const url = `${base}#popout`;
 
-    const url = `${window.location.pathname}#popout`;
     const w = window.open(
       url,
       "open_popout_player",
@@ -67,13 +61,10 @@
     );
 
     try { w && w.focus && w.focus(); } catch {}
-
-    // TRANSFER SOUND: stop audio in the main tab when you open the popout
-    stopAll();
   }
 
   // =========================
-  // Audio engine (plays in whichever window hits Play)
+  // Audio engine (popout only)
   // =========================
   let audioContext = null;
   let masterGain = null;
@@ -119,8 +110,6 @@
   }
 
   function createReverb() {
-    if (!audioContext) return;
-
     const duration = 5.0;
     const rate = audioContext.sampleRate;
     const length = rate * duration;
@@ -209,7 +198,6 @@
 
       const interval = scale[Math.floor(Math.random() * scale.length)];
       const freq = baseFreq * Math.pow(2, interval / 12);
-
       const dur = (1 / density) * 2.5;
 
       playFmBell(freq, dur, 0.4, nextNoteTime);
@@ -225,12 +213,10 @@
     ensureAudio();
     if (audioContext.state === "suspended") await audioContext.resume();
 
-    // Ensure master gain is up (in case it was faded)
     masterGain.gain.setValueAtTime(1, audioContext.currentTime);
 
-    stopAll(); // stop current session in this SAME window only
+    stopAll();
     isPlaying = true;
-
     sessionStartTime = audioContext.currentTime;
     nextNoteTime = audioContext.currentTime;
 
@@ -244,8 +230,6 @@
     if (rafId) cancelAnimationFrame(rafId);
 
     const now = audioContext.currentTime;
-
-    // small fade to prevent click
     masterGain.gain.setValueAtTime(masterGain.gain.value, now);
     masterGain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
 
@@ -256,53 +240,39 @@
     }, 60);
   }
 
-  // =========================
-  // UI wiring + cross-window setting sync
-  // =========================
   document.addEventListener("DOMContentLoaded", () => {
     if (isPopoutMode()) document.body.classList.add("popout");
 
-    // Load saved settings
-    const saved = loadState();
-    applyUIState(saved);
+    // Launch button exists in both modes, but popout hides launchOnly via CSS anyway.
+    document.getElementById("launchPlayer")?.addEventListener("click", openPopout);
 
-    // Keep Hz readout in sync
-    const toneSlider = document.getElementById("tone");
-    const hzReadout = document.getElementById("hzReadout");
-    if (toneSlider && hzReadout) {
-      hzReadout.textContent = toneSlider.value;
-      toneSlider.addEventListener("input", () => {
+    if (isPopoutMode()) {
+      const saved = loadState();
+      applyControls(saved);
+
+      const toneSlider = document.getElementById("tone");
+      const hzReadout = document.getElementById("hzReadout");
+      if (toneSlider && hzReadout) {
         hzReadout.textContent = toneSlider.value;
-        saveState();
+        toneSlider.addEventListener("input", () => {
+          hzReadout.textContent = toneSlider.value;
+          saveState(readControls());
+        });
+      }
+
+      ["songDuration", "mood", "density"].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener("input", () => saveState(readControls()));
+        el.addEventListener("change", () => saveState(readControls()));
       });
+
+      document.getElementById("playNow")?.addEventListener("click", async () => {
+        saveState(readControls());
+        await startFromUI();
+      });
+
+      document.getElementById("stop")?.addEventListener("click", stopAll);
     }
-
-    // Persist changes
-    ["songDuration", "mood", "density"].forEach(id => {
-      const el = document.getElementById(id);
-      if (!el) return;
-      el.addEventListener("input", saveState);
-      el.addEventListener("change", saveState);
-    });
-
-    // Buttons
-    document.getElementById("playNow")?.addEventListener("click", async () => {
-      await startFromUI(); // Play plays in the current window
-    });
-
-    document.getElementById("stop")?.addEventListener("click", () => {
-      stopAll();
-    });
-
-    document.getElementById("popOut")?.addEventListener("click", () => {
-      openPopout(); // Open Player opens popout and stops main (transfer sound)
-    });
-
-    // Cross-window: apply settings when the other window changes them
-    window.addEventListener("storage", (e) => {
-      if (e.key !== STATE_KEY) return;
-      const st = loadState();
-      applyUIState(st);
-    });
   });
 })();
