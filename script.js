@@ -1,5 +1,5 @@
 (() => {
-  const STATE_KEY = "open_player_settings_v8";
+  const STATE_KEY = "open_player_settings_v11";
 
   function isPopoutMode() {
     return window.location.hash === "#popout";
@@ -63,7 +63,7 @@
   // =========================
   let audioContext = null;
   let masterGain = null;
-  let limiter = null;
+  // Limiter removed to match "Old JS" reverb sound
   let reverbNode = null;
   let reverbGain = null;
 
@@ -104,19 +104,14 @@
 
     audioContext = new (window.AudioContext || window.webkitAudioContext)();
 
-    limiter = audioContext.createDynamicsCompressor();
-    limiter.threshold.setValueAtTime(-1.0, audioContext.currentTime);
-    limiter.knee.setValueAtTime(0, audioContext.currentTime);
-    limiter.ratio.setValueAtTime(20, audioContext.currentTime);
-    limiter.connect(audioContext.destination);
-
+    // Direct routing to destination (No Limiter)
     masterGain = audioContext.createGain();
-    masterGain.connect(limiter);
+    masterGain.connect(audioContext.destination);
     masterGain.gain.value = 1;
 
     reverbNode = audioContext.createConvolver();
     reverbGain = audioContext.createGain();
-    reverbGain.gain.value = 1.2;
+    reverbGain.gain.value = 1.2; // High reverb gain maintained
 
     createReverb();
   }
@@ -135,8 +130,11 @@
     }
 
     reverbNode.buffer = impulse;
+    
+    // Connect Reverb directly to destination (bypassing masterGain)
+    // This allows reverb tails to ring out naturally even if we cut the dry signal.
     reverbNode.connect(reverbGain);
-    reverbGain.connect(limiter);
+    reverbGain.connect(audioContext.destination);
   }
 
   function playFmBell(freq, duration, volume, startTime) {
@@ -154,10 +152,10 @@
       totalAmp += amp;
     }
 
-    // FIX: We shorten the amplitude envelope slightly relative to the modulation.
-    // This ensures the sound fades to silence *before* the modulation dies out,
-    // eliminating the "pure sine wave" tail.
-    const ampDuration = duration * 0.8; 
+    // "Tandem Fade" to hide sine wave:
+    // Color (mod) lasts 10% longer than Volume (amp)
+    const modDuration = duration * 1.1; 
+    const ampDuration = duration; 
 
     voices.forEach((voice) => {
       const carrier = audioContext.createOscillator();
@@ -168,11 +166,11 @@
       carrier.frequency.value = freq;
       modulator.frequency.value = freq * voice.modRatio;
 
-      // Modulator maintains complexity over the full 'duration'
+      // Color Envelope
       modGain.gain.setValueAtTime(freq * voice.modIndex, startTime);
-      modGain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+      modGain.gain.exponentialRampToValueAtTime(0.0001, startTime + modDuration);
 
-      // Amplitude fades out quicker (at ampDuration)
+      // Volume Envelope
       ampGain.gain.setValueAtTime(0.0001, startTime);
       ampGain.gain.exponentialRampToValueAtTime((voice.amp / totalAmp) * volume, startTime + 0.01);
       ampGain.gain.exponentialRampToValueAtTime(0.0001, startTime + ampDuration);
@@ -181,15 +179,15 @@
       modGain.connect(carrier.frequency);
       carrier.connect(ampGain);
 
-      ampGain.connect(reverbNode);
-      ampGain.connect(masterGain);
+      // Parallel Routing (Matches Old JS)
+      ampGain.connect(reverbNode);  // Wet signal
+      ampGain.connect(masterGain);  // Dry signal
 
       modulator.start(startTime);
       carrier.start(startTime);
       
-      // Stop oscillators at the full duration (even though silent after 0.8)
-      modulator.stop(startTime + duration);
-      carrier.stop(startTime + duration);
+      modulator.stop(startTime + modDuration);
+      carrier.stop(startTime + modDuration);
 
       activeNodes.push(carrier, modulator, ampGain);
     });
@@ -221,6 +219,7 @@
       const density = runDensity;               
       const dur = (1 / density) * 2.5;
 
+      // Volume 0.4
       playFmBell(freq, dur, 0.4, nextNoteTime);
 
       const drift = 0.95 + (Math.random() * 0.1);
@@ -253,12 +252,14 @@
     if (rafId) cancelAnimationFrame(rafId);
 
     const now = audioContext.currentTime;
+    // Fade out dry signal
     masterGain.gain.setValueAtTime(masterGain.gain.value, now);
     masterGain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
 
     setTimeout(() => {
       activeNodes.forEach(n => { try { n.stop(); } catch(e) {} });
       activeNodes = [];
+      // Reset master gain
       if (masterGain) masterGain.gain.setValueAtTime(1, audioContext.currentTime);
     }, 60);
   }
