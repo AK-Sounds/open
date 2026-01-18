@@ -234,7 +234,7 @@
       // keep your pacing formula
       const dur = (1 / density) * 2.5;
 
-      playFmBell(freq, dur, 0.4, nextNoteTime);
+      playFmBell(freq, dur, 0.2, nextNoteTime);
 
       const drift = 0.95 + (Math.random() * 0.1);
       nextNoteTime += (1 / density) * drift;
