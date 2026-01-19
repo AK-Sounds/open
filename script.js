@@ -1,5 +1,5 @@
 (() => {
-  const STATE_KEY = "open_player_settings_v13";
+  const STATE_KEY = "open_player_settings_v14";
 
   function isPopoutMode() {
     return window.location.hash === "#popout";
@@ -62,12 +62,7 @@
   // Audio engine (popout only)
   // =========================
   let audioContext = null;
-  
-  // NOTE: Original script did not use a masterGain for fadeouts, 
-  // but we keep it here only for the "Stop" button functionality 
-  // to prevent clicking. It stays at 1.0 otherwise.
   let masterGain = null;
-  
   let reverbNode = null;
   let reverbGain = null;
 
@@ -107,69 +102,57 @@
 
     audioContext = new (window.AudioContext || window.webkitAudioContext)();
 
-    // Master Gain (Used purely for clean Stop functionality)
     masterGain = audioContext.createGain();
     masterGain.connect(audioContext.destination);
     masterGain.gain.value = 1;
 
-    // =========================================================
-    // REVERB SETUP (Matches ORIGINAL Script exactly)
-    // =========================================================
     reverbNode = audioContext.createConvolver();
     reverbGain = audioContext.createGain();
     
-    // ORIGINAL SCRIPT GAIN: 1.5 (was 1.2 in previous versions)
+    // Original Script Gain
     reverbGain.gain.value = 1.5; 
 
     createReverb();
   }
 
   function createReverb() {
-    // ORIGINAL SCRIPT PARAMS: Duration 5.0, Decay 1.5
     const duration = 5.0; 
     const decay = 1.5;
-    
     const rate = audioContext.sampleRate;
-    const length = Math.floor(rate * duration); // Original used Math.floor
+    const length = Math.floor(rate * duration); 
     const impulse = audioContext.createBuffer(2, length, rate);
 
     for (let ch = 0; ch < 2; ch++) {
       const data = impulse.getChannelData(ch);
       for (let i = 0; i < length; i++) {
-        // ORIGINAL MATH: (Math.random() * 2 - 1) * Math.pow(1 - i / length, decay);
         const t = i / length;
         data[i] = (Math.random() * 2 - 1) * Math.pow(1 - t, decay);
       }
     }
 
     reverbNode.buffer = impulse;
-    
-    // Routing: Reverb -> Gain -> Destination
     reverbNode.connect(reverbGain);
     reverbGain.connect(audioContext.destination);
   }
 
-  // =========================================================
-  // FM SYNTHESIS (Matches ORIGINAL Script exactly)
-  // =========================================================
   function playFmBell(freq, duration, volume, startTime) {
-    
-    // 1. Generate Voices (Matches 'generateRandomFmVoices' from Original)
-    // Range: 2 to 3 voices
     const numVoices = 2 + Math.floor(Math.random() * 2); 
     const voices = [];
     let totalAmp = 0;
 
     for (let i = 0; i < numVoices; i++) {
-      // Range: ModRatio 1.5 - 4.0
       const modRatio = 1.5 + Math.random() * 2.5;
-      // Range: ModIndex 1 - 5
       const modIndex = 1 + Math.random() * 4;
-      
       const amp = Math.random();
       voices.push({ modRatio, modIndex, amp });
       totalAmp += amp;
     }
+
+    // ========================================================
+    // TANDEM FADE LOGIC (+20%)
+    // ========================================================
+    const modDuration = duration * 1.2; // Metallic sound lasts 20% longer
+    const ampDuration = duration;       // Volume hits 0 at standard duration
 
     voices.forEach((voice) => {
       const carrier = audioContext.createOscillator();
@@ -180,34 +163,31 @@
       carrier.frequency.value = freq;
       modulator.frequency.value = freq * voice.modRatio;
 
-      // 2. Modulation Envelope (Matches Original)
       const maxDeviation = freq * voice.modIndex;
       modGain.gain.setValueAtTime(maxDeviation, startTime);
-      // Decays exactly to duration
-      modGain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+      
+      // Modulator decays over the LONGER duration
+      modGain.gain.exponentialRampToValueAtTime(0.0001, startTime + modDuration);
 
-      // 3. Amplitude Envelope (Matches Original - NO Tandem Fade)
       ampGain.gain.setValueAtTime(0.0001, startTime);
-      // Fast attack to 0.01s
       ampGain.gain.exponentialRampToValueAtTime((voice.amp / totalAmp) * volume, startTime + 0.01);
-      // Decays exactly to duration (synchronized with Mod)
-      ampGain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+      
+      // Volume decays over the SHORTER duration
+      ampGain.gain.exponentialRampToValueAtTime(0.0001, startTime + ampDuration);
 
       modulator.connect(modGain);
       modGain.connect(carrier.frequency);
       carrier.connect(ampGain);
 
-      // 4. Routing (Matches Original)
-      // Connect to Reverb
       ampGain.connect(reverbNode);
-      // Connect to Destination (via masterGain for stop functionality)
       ampGain.connect(masterGain); 
 
       modulator.start(startTime);
       carrier.start(startTime);
       
-      modulator.stop(startTime + duration);
-      carrier.stop(startTime + duration);
+      // Important: Stop oscillators only after the LONGER duration finishes
+      modulator.stop(startTime + modDuration);
+      carrier.stop(startTime + modDuration);
 
       activeNodes.push(carrier, modulator, modGain, ampGain);
     });
@@ -239,7 +219,6 @@
       const density = runDensity;               
       const dur = (1 / density) * 2.5;
 
-      // Volume 0.4 (Safe default)
       playFmBell(freq, dur, 0.4, nextNoteTime);
 
       const drift = 0.95 + (Math.random() * 0.1);
