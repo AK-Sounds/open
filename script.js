@@ -1,5 +1,5 @@
 (() => {
-  const STATE_KEY = "open_player_settings_v22";
+  const STATE_KEY = "open_player_settings_v24";
 
   function safeParse(raw) {
     try { return JSON.parse(raw); } catch { return null; }
@@ -43,11 +43,9 @@
 
     if (playBtn && stopBtn) {
       if (isPlaying) {
-        // PLAYING: Play is Black (Filled), Stop is White
         playBtn.classList.add("filled");
         stopBtn.classList.remove("filled");
       } else {
-        // STOPPED: Play is White, Stop is Black (Filled)
         playBtn.classList.remove("filled");
         stopBtn.classList.add("filled");
       }
@@ -59,20 +57,23 @@
   }
 
   // =========================
-  // AUDIO ENGINE (Soft Start Version)
+  // AUDIO ENGINE
   // =========================
   let audioContext = null;
   let masterGain = null;
   let reverbNode = null;
   let reverbGain = null;
+  let dcBlocker = null;
+  
+  // Cache the custom waveform so we don't rebuild it every note
+  let bellWave = null;
 
   let activeNodes = [];
   let isPlaying = false;
   let nextNoteTime = 0;
   let sessionStartTime = 0;
   let rafId = null;
-  let cleanupTimer = null;
-
+  
   const scheduleAheadTime = 0.5;
   const scales = {
     major: [0, 2, 4, 5, 7, 9, 11],
@@ -102,13 +103,29 @@
 
     audioContext = new (window.AudioContext || window.webkitAudioContext)();
 
-    masterGain = audioContext.createGain();
-    masterGain.connect(audioContext.destination);
-    masterGain.gain.value = 1;
+    // 1. Build Custom "Bell" Waveform
+    // A sine wave is [0, 1]. We add a bit of the 3rd, 5th, and 7th harmonics.
+    // This makes the carrier sound "woodier" and less like a digital beep.
+    const real = new Float32Array([0, 1, 0, 0.15, 0, 0.05, 0, 0.01]); 
+    const imag = new Float32Array(real.length); // Phase can be 0
+    bellWave = audioContext.createPeriodicWave(real, imag);
 
+    // 2. DC Blocker
+    dcBlocker = audioContext.createBiquadFilter();
+    dcBlocker.type = "highpass";
+    dcBlocker.frequency.value = 12;
+    dcBlocker.Q.value = 0.707;
+    dcBlocker.connect(audioContext.destination);
+
+    // 3. Master Gain
+    masterGain = audioContext.createGain();
+    masterGain.gain.value = 1;
+    masterGain.connect(dcBlocker);
+
+    // 4. Reverb (Gain 1.2)
     reverbNode = audioContext.createConvolver();
     reverbGain = audioContext.createGain();
-    reverbGain.gain.value = 1.5; 
+    reverbGain.gain.value = 1.2; 
 
     createReverb();
   }
@@ -129,7 +146,7 @@
     }
     reverbNode.buffer = impulse;
     reverbNode.connect(reverbGain);
-    reverbGain.connect(audioContext.destination);
+    reverbGain.connect(dcBlocker);
   }
 
   function playFmBell(freq, duration, volume, startTime) {
@@ -151,12 +168,20 @@
       const modGain = audioContext.createGain();
       const ampGain = audioContext.createGain();
 
+      // USE CUSTOM WAVE (The "Non-Sine" Fix)
+      if (bellWave) {
+        carrier.setPeriodicWave(bellWave);
+      }
+
       const detune = (Math.random() - 0.5) * 2.0; 
       carrier.frequency.value = freq + detune;
       modulator.frequency.value = freq * voice.modRatio;
 
       const maxDeviation = freq * voice.modIndex;
-      const minDeviation = freq * 0.5;
+      
+      // RAISED FLOOR (The "Texture" Fix)
+      // Raised from 0.5 to 0.8 so the FM texture stays thicker
+      const minDeviation = freq * 0.8;
 
       modGain.gain.setValueAtTime(maxDeviation, startTime);
       modGain.gain.exponentialRampToValueAtTime(minDeviation, startTime + duration);
@@ -218,25 +243,16 @@
     ensureAudio();
     if (audioContext.state === "suspended") await audioContext.resume();
 
-    if (cleanupTimer) {
-      clearTimeout(cleanupTimer);
-      cleanupTimer = null;
-    }
-
     rerollHiddenParamsForThisPlay();
-    
-    // UI: Set Play to Filled
     updateButtons(true);
 
-    // AUDIO: Soft Start (Fade In 0->1) to prevent pop
-    masterGain.gain.cancelScheduledValues(audioContext.currentTime);
-    masterGain.gain.setValueAtTime(0, audioContext.currentTime);
-    masterGain.gain.linearRampToValueAtTime(1, audioContext.currentTime + 0.1);
+    // Instant Start (Original Logic)
+    masterGain.gain.setValueAtTime(1, audioContext.currentTime);
 
-    stopAll(true); // Internal reset only
+    stopAll(true);
     isPlaying = true;
     sessionStartTime = audioContext.currentTime;
-    nextNoteTime = audioContext.currentTime + 0.1;
+    nextNoteTime = audioContext.currentTime;
 
     scheduler();
   }
@@ -249,7 +265,6 @@
 
     if (!isRestarting) {
       isPlaying = false;
-      // UI: Set Stop to Filled
       updateButtons(false);
     }
 
@@ -260,21 +275,17 @@
       masterGain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
     }
 
-    cleanupTimer = setTimeout(() => {
+    setTimeout(() => {
       activeNodes.forEach(n => { try { n.stop(); } catch(e) {} });
       activeNodes = [];
     }, 60);
   }
 
   document.addEventListener("DOMContentLoaded", () => {
-    // 1. Load Settings
     const saved = loadState();
     applyControls(saved);
-    
-    // 2. Initial Button State (Stopped)
     updateButtons(false);
 
-    // 3. Setup Controls
     const toneSlider = document.getElementById("tone");
     const hzReadout = document.getElementById("hzReadout");
     if (toneSlider && hzReadout) {
@@ -290,14 +301,12 @@
       sd.addEventListener("input", () => saveState(readControls()));
     }
 
-    // 4. Setup Play/Stop
     document.getElementById("playNow")?.addEventListener("click", async () => {
       saveState(readControls());
       await startFromUI();
     });
     document.getElementById("stop")?.addEventListener("click", () => stopAll(false));
 
-    // 5. Mobile One-Page Launch
     document.getElementById("launchPlayer")?.addEventListener("click", () => {
       showPlayerUI();
     });
