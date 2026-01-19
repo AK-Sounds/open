@@ -1,6 +1,4 @@
-/* =========================
-   Open — Full Stylesheet
-   ========================= */
+/* style.css — Open (v16) + Stop-ended styling */
 
 * { box-sizing: border-box; }
 
@@ -110,14 +108,36 @@ button:focus {
 }
 
 /* =========================
+   Stop button: natural-end state
+   ========================= */
+
+/* Darken + disable only when ended naturally (JS sets .ended + disabled=true) */
+button.ended,
+button:disabled {
+  background-color: #000 !important;
+  color: #fff !important;
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* Prevent hover/focus from "lighting up" disabled buttons */
+button:disabled:hover,
+button:disabled:active,
+button:disabled:focus {
+  background-color: #000 !important;
+  color: #fff !important;
+  outline: none;
+}
+
+/* =========================
    Mode switching
    ========================= */
 
 /* Default (main tab): hide player UI and your name */
 #controls { display: none; }
-#credits { display: none; }        /* <-- removes name from launch page */
-.separator { display: none; }      /* optional: keep launch page ultra-minimal */
-#popoutTitle { display: none; }    /* no title on launch */
+#credits { display: none; }
+.separator { display: none; }
+#popoutTitle { display: none; }
 
 /* Popout mode: show player UI, title, footer */
 body.popout #controls { display: block; }
