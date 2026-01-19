@@ -1,30 +1,122 @@
-/* =========================
-   BUTTON STATES (Black/White Toggle)
-   ========================= */
+/* style.css — v22: Black/White Buttons + iOS Fixes */
 
-/* Base Button Style (Unfilled/Off) */
-button {
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  background-color: #fff;
+  color: #000;
+}
+
+main {
+  max-width: 520px;
+  margin: 15vh auto;
+  padding: 0 2rem;
+}
+
+/* --- SECTION VISIBILITY --- */
+#controls, #credits, #popoutTitle, .separator { display: none; }
+#launchOnly { display: block; }
+
+/* When active-mode is on (clicked Open), swap them */
+body.active-mode #launchOnly { display: none; }
+body.active-mode #controls,
+body.active-mode #credits,
+body.active-mode #popoutTitle,
+body.active-mode .separator { display: block; }
+
+/* --- TYPOGRAPHY --- */
+#popoutTitle {
+  font-weight: normal;
+  text-transform: uppercase;
+  letter-spacing: 0.5rem;
+  border-bottom: 1px solid #000;
+  padding-bottom: 1rem;
+  margin: 0 0 2rem 0;
+}
+
+/* --- FORMS --- */
+.form-group {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+/* iOS FIX: Force square corners */
+input, select, button {
+  -webkit-appearance: none;
+  appearance: none;
+  border-radius: 0;
   background-color: #fff !important;
   color: #000 !important;
   border: 1px solid #000;
-  opacity: 1;
-  cursor: pointer;
+  padding: 0.5rem;
+  font-family: inherit;
+  font-size: 1rem;
+  outline: none;
 }
 
-/* Filled Button Style (Active/On) */
+/* --- SLIDER (Black) --- */
+input[type="range"] {
+  border: none;
+  background: transparent;
+  height: 2px;
+  width: 50%;
+  padding: 0;
+  cursor: pointer;
+  accent-color: #000;
+}
+input[type="range"]::-webkit-slider-runnable-track {
+  background: #000;
+  height: 2px;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  background: #000;
+  height: 16px;
+  width: 16px;
+  margin-top: -7px;
+  border-radius: 0;
+}
+
+/* --- BUTTONS --- */
+.form-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+button {
+  flex: 1;
+  cursor: pointer;
+  text-transform: uppercase;
+  transition: none;
+}
+
+/* FILLED STATE (Black) */
 button.filled {
   background-color: #000 !important;
   color: #fff !important;
-  border: 1px solid #000;
 }
 
-/* Remove default disabled styling so we control it purely via class */
-button:disabled {
-  opacity: 1;
-  cursor: pointer;
+/* Launch button specific */
+.secondary-btn {
+  border: 1px dashed #000;
+  font-size: 0.95rem;
+  width: 100%;
 }
 
-/* Hover effects (Optional - keep it subtle to maintain black/white clarity) */
-button:hover {
-  /* You can leave this empty if you want strict black/white */
+/* --- FOOTER --- */
+.separator {
+  margin-top: 4rem;
+  border: 0;
+  border-top: 1px solid #000;
+}
+#credits {
+  margin-top: 1.5rem;
+  font-size: 0.8rem;
+  text-transform: uppercase;
 }
