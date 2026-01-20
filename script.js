@@ -1,5 +1,5 @@
 (() => {
-  const STATE_KEY = "open_player_settings_v18";
+  const STATE_KEY = "open_player_settings_v16";
 
   function isPopoutMode() {
     return window.location.hash === "#popout";
@@ -59,19 +59,6 @@
   }
 
   // =========================
-  // UI STATE MANAGEMENT
-  // =========================
-  function updateButtons(isPlaying) {
-    const playBtn = document.getElementById("playNow");
-    const stopBtn = document.getElementById("stop");
-
-    // isPlaying = true  -> Play Disabled (Dark), Stop Enabled
-    // isPlaying = false -> Play Enabled (Light), Stop Disabled
-    if (playBtn) playBtn.disabled = isPlaying;
-    if (stopBtn) stopBtn.disabled = !isPlaying;
-  }
-
-  // =========================
   // Audio engine (popout only)
   // =========================
   let audioContext = null;
@@ -119,6 +106,9 @@
     masterGain.connect(audioContext.destination);
     masterGain.gain.value = 1;
 
+    // ===============================================
+    // REVERB (Matches Original Script)
+    // ===============================================
     reverbNode = audioContext.createConvolver();
     reverbGain = audioContext.createGain();
     reverbGain.gain.value = 1.5; 
@@ -165,17 +155,25 @@
       const modGain = audioContext.createGain();
       const ampGain = audioContext.createGain();
 
+      // CHANGE 1: Micro-Detuning
+      // We add a tiny random offset (+/- 2 Hz) to the carrier.
+      // This prevents the sine wave from being "mathematically perfect" and sterile.
       const detune = (Math.random() - 0.5) * 2.0; 
       carrier.frequency.value = freq + detune;
 
       modulator.frequency.value = freq * voice.modRatio;
 
       const maxDeviation = freq * voice.modIndex;
+      
+      // CHANGE 2: The Non-Zero Floor
+      // Instead of ramping to 0.0001 (Pure Sine), we ramp to 'freq * 0.5'.
+      // This ensures the "wobble" (metal character) persists until the very end.
       const minDeviation = freq * 0.5;
 
       modGain.gain.setValueAtTime(maxDeviation, startTime);
       modGain.gain.exponentialRampToValueAtTime(minDeviation, startTime + duration);
 
+      // Volume Envelope (Standard - no early cut needed anymore!)
       ampGain.gain.setValueAtTime(0.0001, startTime);
       ampGain.gain.exponentialRampToValueAtTime((voice.amp / totalAmp) * volume, startTime + 0.01);
       ampGain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
@@ -202,19 +200,12 @@
   function scheduler() {
     if (!isPlaying) return;
 
-    // Fix: Handle empty/invalid inputs safely
-    let durationInput = document.getElementById("songDuration")?.value;
-    if (!durationInput || durationInput.trim() === "") {
-        durationInput = "60";
-    }
-
+    const durationInput = document.getElementById("songDuration")?.value ?? "60";
     const currentTime = audioContext.currentTime;
 
     if (durationInput !== "infinite") {
       const elapsed = currentTime - sessionStartTime;
-      // Safety check: ensure we compare numbers
-      const limit = parseFloat(durationInput);
-      if (!isNaN(limit) && elapsed >= limit) {
+      if (elapsed >= parseFloat(durationInput)) {
         stopAll();
         return;
       }
@@ -244,17 +235,10 @@
     if (audioContext.state === "suspended") await audioContext.resume();
 
     rerollHiddenParamsForThisPlay();
-    
-    // 1. Force UI to Playing state
-    updateButtons(true);
 
-    // 2. Reset Master Gain
     masterGain.gain.setValueAtTime(1, audioContext.currentTime);
 
-    // 3. Stop internal logic without resetting UI to 'Stopped' yet
-    stopAll(true); 
-
-    // 4. Start fresh
+    stopAll();
     isPlaying = true;
     sessionStartTime = audioContext.currentTime;
     nextNoteTime = audioContext.currentTime;
@@ -262,33 +246,20 @@
     scheduler();
   }
 
-  function stopAll(isRestarting = false) {
-    // 1. Kill the loop immediately
-    if (rafId) {
-        cancelAnimationFrame(rafId);
-        rafId = null;
-    }
+  function stopAll() {
+    if (!isPlaying) return;
 
-    // 2. If we are genuinely stopping (not just restarting), update UI
-    if (!isRestarting) {
-      isPlaying = false;
-      updateButtons(false); // Re-enable Play, Disable Stop
-    }
+    isPlaying = false;
+    if (rafId) cancelAnimationFrame(rafId);
 
-    // 3. Audio Cleanup (Fade out to avoid clicks)
-    const now = audioContext?.currentTime || 0;
-    if (masterGain) {
-      masterGain.gain.cancelScheduledValues(now);
-      masterGain.gain.setValueAtTime(masterGain.gain.value, now);
-      masterGain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
-    }
+    const now = audioContext.currentTime;
+    masterGain.gain.setValueAtTime(masterGain.gain.value, now);
+    masterGain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
 
     setTimeout(() => {
       activeNodes.forEach(n => { try { n.stop(); } catch(e) {} });
       activeNodes = [];
-      if (masterGain && audioContext) {
-         masterGain.gain.setValueAtTime(1, audioContext.currentTime);
-      }
+      if (masterGain) masterGain.gain.setValueAtTime(1, audioContext.currentTime);
     }, 60);
   }
 
@@ -300,9 +271,6 @@
     if (isPopoutMode()) {
       const saved = loadState();
       applyControls(saved);
-      
-      // Initial button state
-      updateButtons(false);
 
       const toneSlider = document.getElementById("tone");
       const hzReadout = document.getElementById("hzReadout");
@@ -326,7 +294,7 @@
         await startFromUI();
       });
 
-      document.getElementById("stop")?.addEventListener("click", () => stopAll(false));
+      document.getElementById("stop")?.addEventListener("click", stopAll);
     }
   });
 })();
