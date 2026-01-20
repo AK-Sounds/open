@@ -5,6 +5,21 @@
     return window.location.hash === "#popout";
   }
 
+  // Mobile heuristic: iOS/Android OR coarse pointer + small viewport.
+  function isMobileDevice() {
+    const ua = navigator.userAgent || "";
+    const uaMobile = /iPhone|iPad|iPod|Android/i.test(ua);
+    const coarse = window.matchMedia?.("(pointer: coarse)")?.matches ?? false;
+    const small = window.matchMedia?.("(max-width: 820px)")?.matches ?? false;
+    return uaMobile || (coarse && small);
+  }
+
+  function isPlayerMode() {
+    // “player mode” means controls are visible and audio is allowed:
+    // popout OR mobile one-page
+    return isPopoutMode() || document.body.classList.contains("mobile-player");
+  }
+
   function safeParse(raw) {
     try { return JSON.parse(raw); } catch { return null; }
   }
@@ -41,6 +56,26 @@
     }
   }
 
+  // =========================
+  // Button UI state (.filled)
+  // =========================
+  function setButtonsPlaying(playing) {
+    const playBtn = document.getElementById("playNow");
+    const stopBtn = document.getElementById("stop");
+    if (!playBtn || !stopBtn) return;
+
+    if (playing) {
+      playBtn.classList.add("filled");   // black
+      stopBtn.classList.remove("filled"); // white
+    } else {
+      playBtn.classList.remove("filled"); // white
+      stopBtn.classList.add("filled");    // black
+    }
+  }
+
+  // =========================
+  // Launch logic
+  // =========================
   function openPopout() {
     const base = window.location.href.split("#")[0];
     const url = `${base}#popout`;
@@ -58,8 +93,14 @@
     try { w.focus(); } catch {}
   }
 
+  function enterMobileOnePageMode() {
+    document.body.classList.add("mobile-player");
+    // If user is already in player mode, make sure initial button state is correct.
+    setButtonsPlaying(false);
+  }
+
   // =========================
-  // Audio engine (popout only)
+  // Audio engine (player mode)
   // =========================
   let audioContext = null;
   let masterGain = null;
@@ -79,6 +120,8 @@
     minor: [0, 2, 3, 5, 7, 8, 10],
     pentatonic: [0, 2, 4, 7, 9],
   };
+
+  // Hidden params (as you already had)
   const MOOD_CHOICES = ["major", "minor", "pentatonic"];
   const DENSITY_MIN = 0.05;
   const DENSITY_MAX = 0.425;
@@ -106,21 +149,19 @@
     masterGain.connect(audioContext.destination);
     masterGain.gain.value = 1;
 
-    // ===============================================
-    // REVERB (Matches Original Script)
-    // ===============================================
+    // Reverb (unchanged from your current v16)
     reverbNode = audioContext.createConvolver();
     reverbGain = audioContext.createGain();
-    reverbGain.gain.value = 1.5; 
+    reverbGain.gain.value = 1.5;
 
     createReverb();
   }
 
   function createReverb() {
-    const duration = 5.0; 
+    const duration = 5.0;
     const decay = 1.5;
     const rate = audioContext.sampleRate;
-    const length = Math.floor(rate * duration); 
+    const length = Math.floor(rate * duration);
     const impulse = audioContext.createBuffer(2, length, rate);
 
     for (let ch = 0; ch < 2; ch++) {
@@ -137,7 +178,7 @@
   }
 
   function playFmBell(freq, duration, volume, startTime) {
-    const numVoices = 2 + Math.floor(Math.random() * 2); 
+    const numVoices = 2 + Math.floor(Math.random() * 2);
     const voices = [];
     let totalAmp = 0;
 
@@ -155,25 +196,18 @@
       const modGain = audioContext.createGain();
       const ampGain = audioContext.createGain();
 
-      // CHANGE 1: Micro-Detuning
-      // We add a tiny random offset (+/- 2 Hz) to the carrier.
-      // This prevents the sine wave from being "mathematically perfect" and sterile.
-      const detune = (Math.random() - 0.5) * 2.0; 
+      // Micro-detune
+      const detune = (Math.random() - 0.5) * 2.0;
       carrier.frequency.value = freq + detune;
 
       modulator.frequency.value = freq * voice.modRatio;
 
       const maxDeviation = freq * voice.modIndex;
-      
-      // CHANGE 2: The Non-Zero Floor
-      // Instead of ramping to 0.0001 (Pure Sine), we ramp to 'freq * 0.5'.
-      // This ensures the "wobble" (metal character) persists until the very end.
-      const minDeviation = freq * 0.5;
+      const minDeviation = freq * 0.5; // keep some wobble
 
       modGain.gain.setValueAtTime(maxDeviation, startTime);
       modGain.gain.exponentialRampToValueAtTime(minDeviation, startTime + duration);
 
-      // Volume Envelope (Standard - no early cut needed anymore!)
       ampGain.gain.setValueAtTime(0.0001, startTime);
       ampGain.gain.exponentialRampToValueAtTime((voice.amp / totalAmp) * volume, startTime + 0.01);
       ampGain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
@@ -183,11 +217,11 @@
       carrier.connect(ampGain);
 
       ampGain.connect(reverbNode);
-      ampGain.connect(masterGain); 
+      ampGain.connect(masterGain);
 
       modulator.start(startTime);
       carrier.start(startTime);
-      
+
       modulator.stop(startTime + duration);
       carrier.stop(startTime + duration);
 
@@ -218,7 +252,7 @@
       const interval = scale[Math.floor(Math.random() * scale.length)];
       const freq = baseFreq * Math.pow(2, interval / 12);
 
-      const density = runDensity;               
+      const density = runDensity;
       const dur = (1 / density) * 2.5;
 
       playFmBell(freq, dur, 0.4, nextNoteTime);
@@ -232,43 +266,79 @@
 
   async function startFromUI() {
     ensureAudio();
+
+    // iOS requires resume() from a user gesture; click handler qualifies.
     if (audioContext.state === "suspended") await audioContext.resume();
 
     rerollHiddenParamsForThisPlay();
 
-    masterGain.gain.setValueAtTime(1, audioContext.currentTime);
+    // Ensure any previous tail is cut before restarting
+    stopAll(/*internal*/ true);
 
-    stopAll();
     isPlaying = true;
+    setButtonsPlaying(true);
+
     sessionStartTime = audioContext.currentTime;
     nextNoteTime = audioContext.currentTime;
+
+    masterGain.gain.setValueAtTime(1, audioContext.currentTime);
 
     scheduler();
   }
 
-  function stopAll() {
-    if (!isPlaying) return;
+  // internalStop=true means "don’t fight button state if we’re about to restart"
+  function stopAll(internalStop = false) {
+    if (!audioContext) {
+      isPlaying = false;
+      if (!internalStop) setButtonsPlaying(false);
+      return;
+    }
+    if (!isPlaying && !internalStop) {
+      setButtonsPlaying(false);
+      return;
+    }
 
     isPlaying = false;
     if (rafId) cancelAnimationFrame(rafId);
 
     const now = audioContext.currentTime;
-    masterGain.gain.setValueAtTime(masterGain.gain.value, now);
-    masterGain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+    if (masterGain) {
+      masterGain.gain.setValueAtTime(masterGain.gain.value, now);
+      masterGain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+    }
 
     setTimeout(() => {
-      activeNodes.forEach(n => { try { n.stop(); } catch(e) {} });
+      activeNodes.forEach(n => { try { n.stop(); } catch (e) {} });
       activeNodes = [];
       if (masterGain) masterGain.gain.setValueAtTime(1, audioContext.currentTime);
     }, 60);
+
+    if (!internalStop) setButtonsPlaying(false);
   }
 
+  // =========================
+  // DOM wiring
+  // =========================
   document.addEventListener("DOMContentLoaded", () => {
+    // Popout flag
     if (isPopoutMode()) document.body.classList.add("popout");
 
-    document.getElementById("launchPlayer")?.addEventListener("click", openPopout);
+    // Launch/Open behavior:
+    // - Desktop: open popout
+    // - Mobile: switch to one-page player mode
+    const launchBtn = document.getElementById("launchPlayer");
+    if (launchBtn) {
+      launchBtn.addEventListener("click", () => {
+        if (isMobileDevice() && !isPopoutMode()) {
+          enterMobileOnePageMode();
+        } else {
+          openPopout();
+        }
+      });
+    }
 
-    if (isPopoutMode()) {
+    // Player wiring (works for popout and mobile-player)
+    const setupPlayerUI = () => {
       const saved = loadState();
       applyControls(saved);
 
@@ -289,12 +359,34 @@
         sd.addEventListener("change", () => saveState(readControls()));
       }
 
+      // Initial: stopped state => Stop filled, Play unfilled
+      setButtonsPlaying(false);
+
       document.getElementById("playNow")?.addEventListener("click", async () => {
         saveState(readControls());
         await startFromUI();
       });
 
-      document.getElementById("stop")?.addEventListener("click", stopAll);
-    }
+      document.getElementById("stop")?.addEventListener("click", () => {
+        stopAll(false);
+      });
+    };
+
+    // If we’re already in popout, setup immediately
+    if (isPopoutMode()) setupPlayerUI();
+
+    // If mobile user already has class (e.g., from bfcache), setup too
+    if (document.body.classList.contains("mobile-player")) setupPlayerUI();
+
+    // When we enter mobile mode on click, we need to setup UI once
+    // (simple approach: observe class change)
+    const mo = new MutationObserver(() => {
+      if (isPlayerMode()) {
+        // Only attach once
+        mo.disconnect();
+        setupPlayerUI();
+      }
+    });
+    mo.observe(document.body, { attributes: true, attributeFilter: ["class"] });
   });
 })();
