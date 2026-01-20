@@ -5,7 +5,6 @@
     return window.location.hash === "#popout";
   }
 
-  // Mobile heuristic: iOS/Android OR coarse pointer + small viewport.
   function isMobileDevice() {
     const ua = navigator.userAgent || "";
     const uaMobile = /iPhone|iPad|iPod|Android/i.test(ua);
@@ -36,18 +35,26 @@
   }
 
   function applyControls(state) {
-    if (!state) return;
-
     const sd = document.getElementById("songDuration");
     const tone = document.getElementById("tone");
     const hzReadout = document.getElementById("hzReadout");
 
-    if (sd && state.songDuration != null) sd.value = state.songDuration;
+    // Duration: default 60, but accept only known values
+    const allowedDurations = new Set(["60", "300", "600", "1800", "infinite"]);
+    const savedDur = state && state.songDuration != null ? String(state.songDuration) : null;
+    const durVal = (savedDur && allowedDurations.has(savedDur)) ? savedDur : "60";
+    if (sd) sd.value = durVal;
 
-    if (tone && state.tone != null) {
-      tone.value = state.tone;
-      if (hzReadout) hzReadout.textContent = state.tone;
+    // Tone: default 110, clamp 30–200
+    let toneVal = 110;
+    if (state && state.tone != null) {
+      const n = Number(state.tone);
+      if (Number.isFinite(n)) toneVal = n;
     }
+    toneVal = Math.max(30, Math.min(200, Math.round(toneVal)));
+
+    if (tone) tone.value = String(toneVal);
+    if (hzReadout) hzReadout.textContent = String(toneVal);
   }
 
   // ============================================================
@@ -99,11 +106,16 @@
 
   let activeNodes = [];
   let isPlaying = false;
+  let isEndingNaturally = false; // NEW: prevents double-stop + UI flipping early
   let nextNoteTime = 0;
   let sessionStartTime = 0;
   let rafId = null;
 
   const scheduleAheadTime = 0.5;
+
+  // NEW: natural end tail behavior
+  const NATURAL_END_FADE_SEC = 1.2;   // gentle fade (lets tail feel intentional)
+  const NATURAL_END_HOLD_SEC = 0.35;  // hold before fade so attack doesn't feel cut
 
   const scales = {
     major: [0, 2, 4, 5, 7, 9, 11],
@@ -219,6 +231,38 @@
     if (activeNodes.length > 250) activeNodes.splice(0, 120);
   }
 
+  function beginNaturalEnd() {
+    if (!audioContext || isEndingNaturally) return;
+
+    isEndingNaturally = true;
+
+    // Stop scheduling new notes immediately, but keep UI in "playing"
+    isPlaying = false;
+    if (rafId) cancelAnimationFrame(rafId);
+
+    const now = audioContext.currentTime;
+    masterGain.gain.cancelScheduledValues(now);
+    masterGain.gain.setValueAtTime(masterGain.gain.value, now);
+
+    // Hold briefly (lets attack feel complete), then fade down gently
+    masterGain.gain.setValueAtTime(masterGain.gain.value, now + NATURAL_END_HOLD_SEC);
+    masterGain.gain.exponentialRampToValueAtTime(0.001, now + NATURAL_END_HOLD_SEC + NATURAL_END_FADE_SEC);
+
+    // After fade, hard stop nodes, restore gain, THEN flip UI to stopped
+    const ms = Math.ceil((NATURAL_END_HOLD_SEC + NATURAL_END_FADE_SEC + 0.12) * 1000);
+    setTimeout(() => {
+      activeNodes.forEach(n => { try { n.stop(); } catch (e) {} });
+      activeNodes = [];
+
+      const t = audioContext.currentTime;
+      masterGain.gain.cancelScheduledValues(t);
+      masterGain.gain.setValueAtTime(1, t);
+
+      isEndingNaturally = false;
+      setButtonState("stopped"); // Play goes white here (not early)
+    }, ms);
+  }
+
   function scheduler() {
     if (!isPlaying) return;
 
@@ -228,7 +272,8 @@
     if (durationInput !== "infinite") {
       const elapsed = currentTime - sessionStartTime;
       if (elapsed >= parseFloat(durationInput)) {
-        stopAll(); // natural end => buttons go to stopped (Play white)
+        // Natural end: don't snap UI immediately; do a tail-aware end.
+        beginNaturalEnd();
         return;
       }
     }
@@ -252,7 +297,6 @@
     rafId = requestAnimationFrame(scheduler);
   }
 
-  // Restart-safe: stop nodes and cancel scheduling WITHOUT muting masterGain.
   function killCurrentRunImmediately() {
     if (rafId) cancelAnimationFrame(rafId);
 
@@ -260,6 +304,7 @@
     activeNodes = [];
 
     isPlaying = false;
+    isEndingNaturally = false;
 
     if (audioContext && masterGain) {
       const now = audioContext.currentTime;
@@ -274,7 +319,7 @@
 
     rerollHiddenParamsForThisPlay();
 
-    // Clean restart without muting the master
+    // Clean restart
     killCurrentRunImmediately();
 
     isPlaying = true;
@@ -286,21 +331,28 @@
     scheduler();
   }
 
-  function stopAll() {
-    // Always update UI state
+  function stopAllManual() {
+    // Manual stop: UI flips immediately (as your original behavior)
     setButtonState("stopped");
 
     if (!audioContext) {
       isPlaying = false;
+      isEndingNaturally = false;
       return;
     }
 
-    if (!isPlaying) return;
+    // Cancel any natural ending in progress
+    isEndingNaturally = false;
+
+    if (!isPlaying) {
+      // Still ensure everything is quiet if something is lingering
+      killCurrentRunImmediately();
+      return;
+    }
 
     isPlaying = false;
     if (rafId) cancelAnimationFrame(rafId);
 
-    // Gentle fade on STOP only (not on restart)
     const now = audioContext.currentTime;
     masterGain.gain.cancelScheduledValues(now);
     masterGain.gain.setValueAtTime(masterGain.gain.value, now);
@@ -310,7 +362,6 @@
       activeNodes.forEach(n => { try { n.stop(); } catch (e) {} });
       activeNodes = [];
 
-      // restore for next play
       const t = audioContext.currentTime;
       masterGain.gain.cancelScheduledValues(t);
       masterGain.gain.setValueAtTime(1, t);
@@ -342,7 +393,6 @@
       sd.addEventListener("change", () => saveState(readControls()));
     }
 
-    // Initial visual state
     setButtonState("stopped");
 
     document.getElementById("playNow")?.addEventListener("click", async () => {
@@ -350,7 +400,7 @@
       await startFromUI();
     });
 
-    document.getElementById("stop")?.addEventListener("click", stopAll);
+    document.getElementById("stop")?.addEventListener("click", stopAllManual);
   }
 
   document.addEventListener("DOMContentLoaded", () => {
@@ -368,4 +418,3 @@
     if (isPopoutMode()) setupPlayerUI();
   });
 })();
-
