@@ -1,4 +1,4 @@
-/* style.css — v22: Black/White Buttons + iOS Fixes */
+/* style.css — Open (v16) + Stop-ended styling */
 
 * { box-sizing: border-box; }
 
@@ -16,19 +16,9 @@ main {
   padding: 0 2rem;
 }
 
-/* --- SECTION VISIBILITY --- */
-#controls, #credits, #popoutTitle, .separator { display: none; }
-#launchOnly { display: block; }
-
-/* When active-mode is on (clicked Open), swap them */
-body.active-mode #launchOnly { display: none; }
-body.active-mode #controls,
-body.active-mode #credits,
-body.active-mode #popoutTitle,
-body.active-mode .separator { display: block; }
-
-/* --- TYPOGRAPHY --- */
+/* Popout-only title (hidden by default) */
 #popoutTitle {
+  display: none; /* shown in popout mode */
   font-weight: normal;
   text-transform: uppercase;
   letter-spacing: 0.5rem;
@@ -37,7 +27,19 @@ body.active-mode .separator { display: block; }
   margin: 0 0 2rem 0;
 }
 
-/* --- FORMS --- */
+/* =========================
+   MAIN TAB: launch-only
+   ========================= */
+
+.launch-actions {
+  display: flex;
+  margin-top: 2rem;
+}
+
+/* =========================
+   CONTROLS (popout)
+   ========================= */
+
 .form-group {
   display: flex;
   justify-content: space-between;
@@ -45,44 +47,26 @@ body.active-mode .separator { display: block; }
   margin-bottom: 1.5rem;
 }
 
-/* iOS FIX: Force square corners */
 input, select, button {
-  -webkit-appearance: none;
-  appearance: none;
-  border-radius: 0;
   background-color: #fff !important;
   color: #000 !important;
   border: 1px solid #000;
   padding: 0.5rem;
   font-family: inherit;
   font-size: 1rem;
+  border-radius: 0;
   outline: none;
 }
 
-/* --- SLIDER (Black) --- */
 input[type="range"] {
   border: none;
-  background: transparent;
+  background: #000;
   height: 2px;
   width: 50%;
-  padding: 0;
   cursor: pointer;
-  accent-color: #000;
-}
-input[type="range"]::-webkit-slider-runnable-track {
-  background: #000;
-  height: 2px;
-}
-input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  background: #000;
-  height: 16px;
-  width: 16px;
-  margin-top: -7px;
-  border-radius: 0;
+  padding: 0;
 }
 
-/* --- BUTTONS --- */
 .form-actions {
   display: flex;
   gap: 1rem;
@@ -93,30 +77,77 @@ button {
   flex: 1;
   cursor: pointer;
   text-transform: uppercase;
-  transition: none;
+  transition: none !important;
 }
 
-/* FILLED STATE (Black) */
-button.filled {
+button:hover,
+button:active,
+button:focus {
   background-color: #000 !important;
   color: #fff !important;
+  outline: none;
 }
 
-/* Launch button specific */
+/* Launch button style */
 .secondary-btn {
   border: 1px dashed #000;
   font-size: 0.95rem;
-  width: 100%;
 }
 
-/* --- FOOTER --- */
+/* Separator and footer */
 .separator {
   margin-top: 4rem;
   border: 0;
   border-top: 1px solid #000;
 }
+
 #credits {
   margin-top: 1.5rem;
   font-size: 0.8rem;
   text-transform: uppercase;
+}
+
+/* =========================
+   Stop button: natural-end state
+   ========================= */
+
+/* Darken + disable only when ended naturally (JS sets .ended + disabled=true) */
+button.ended,
+button:disabled {
+  background-color: #000 !important;
+  color: #fff !important;
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* Prevent hover/focus from "lighting up" disabled buttons */
+button:disabled:hover,
+button:disabled:active,
+button:disabled:focus {
+  background-color: #000 !important;
+  color: #fff !important;
+  outline: none;
+}
+
+/* =========================
+   Mode switching
+   ========================= */
+
+/* Default (main tab): hide player UI and your name */
+#controls { display: none; }
+#credits { display: none; }
+.separator { display: none; }
+#popoutTitle { display: none; }
+
+/* Popout mode: show player UI, title, footer */
+body.popout #controls { display: block; }
+body.popout #launchOnly { display: none; }
+body.popout #popoutTitle { display: block; }
+body.popout #credits { display: block; }
+body.popout .separator { display: block; }
+
+/* Popout layout tweaks */
+body.popout main {
+  margin: 2rem auto;
+  max-width: 460px;
 }
