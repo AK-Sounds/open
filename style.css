@@ -1,4 +1,4 @@
-/* style.css — Open (v16+) with .filled toggling + mobile one-page mode */
+/* style.css — Open (v16) updated: .filled toggling + mobile one-page mode */
 
 * { box-sizing: border-box; }
 
@@ -16,7 +16,7 @@ main {
   padding: 0 2rem;
 }
 
-/* Title (hidden by default; shown in popout + mobile-player) */
+/* Title (hidden by default) */
 #popoutTitle {
   display: none;
   font-weight: normal;
@@ -37,7 +37,7 @@ main {
 }
 
 /* =========================
-   CONTROLS (player)
+   CONTROLS
    ========================= */
 
 .form-group {
@@ -48,8 +48,8 @@ main {
 }
 
 input, select, button {
-  background-color: #fff;
-  color: #000;
+  background-color: #fff !important;
+  color: #000 !important;
   border: 1px solid #000;
   padding: 0.5rem;
   font-family: inherit;
@@ -77,16 +77,17 @@ button {
   flex: 1;
   cursor: pointer;
   text-transform: uppercase;
-  transition: none;
+  transition: none !important;
 }
 
-/* Default hover for non-filled buttons */
+/* IMPORTANT:
+   Do NOT invert button colors on hover/focus.
+   This prevents both buttons from ever appearing black at once. */
 button:hover,
 button:active,
 button:focus {
-  background-color: #000;
-  color: #fff;
   outline: none;
+  box-shadow: inset 0 0 0 1px #000;
 }
 
 /* Launch button style */
@@ -109,27 +110,29 @@ button:focus {
 }
 
 /* =========================
-   .filled state (class-based toggling)
+   .filled state (class-based)
    ========================= */
 
 button.filled {
-  background-color: #000;
-  color: #fff;
+  background-color: #000 !important;
+  color: #fff !important;
+  box-shadow: none !important;
 }
 
-/* Keep filled buttons filled on hover/focus (don’t invert away) */
+/* Keep filled buttons filled even when hovered/focused */
 button.filled:hover,
 button.filled:active,
 button.filled:focus {
-  background-color: #000;
-  color: #fff;
+  background-color: #000 !important;
+  color: #fff !important;
+  box-shadow: none !important;
 }
 
 /* =========================
    Mode switching
    ========================= */
 
-/* Default (main tab): hide player UI and extras */
+/* Default (main tab): hide player UI and your name */
 #controls { display: none; }
 #credits { display: none; }
 .separator { display: none; }
@@ -142,7 +145,7 @@ body.popout #popoutTitle { display: block; }
 body.popout #credits { display: block; }
 body.popout .separator { display: block; }
 
-/* Mobile one-page player mode: same visibility behavior as popout */
+/* Mobile one-page mode: show player UI without popout */
 body.mobile-player #controls { display: block; }
 body.mobile-player #launchOnly { display: none; }
 body.mobile-player #popoutTitle { display: block; }
@@ -153,10 +156,4 @@ body.mobile-player .separator { display: block; }
 body.popout main {
   margin: 2rem auto;
   max-width: 460px;
-}
-
-/* Mobile layout tweaks */
-body.mobile-player main {
-  margin: 2rem auto;
-  max-width: 520px;
 }
