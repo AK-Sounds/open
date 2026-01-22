@@ -1,4 +1,4 @@
-/* style.css — Open (v16) Final Fix for Background Persistence, Slider Visibility & Home Button */
+/* style.css — Open (v16) Updated for consistent button styling */
 
 * { box-sizing: border-box; }
 
@@ -8,7 +8,7 @@ body {
   font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
   background-color: #fff;
   color: #000;
-  overflow-x: hidden; /* Prevents tiny shifts from the pixel anchor */
+  overflow-x: hidden; 
 }
 
 main {
@@ -25,23 +25,21 @@ input[type="range"] {
   appearance: none;
   width: 50%;
   height: 2px;
-  background: #000; /* The visible line */
+  background: #000; 
   outline: none;
   cursor: pointer;
 }
 
-/* Handle for Chrome, Safari, Edge */
 input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
   width: 12px;
   height: 12px;
-  background: #000; /* The handle */
+  background: #000;
   border: none;
   cursor: pointer;
 }
 
-/* Handle for Firefox */
 input[type="range"]::-moz-range-thumb {
   width: 12px;
   height: 12px;
@@ -101,6 +99,10 @@ input[type="number"], select, button {
   margin-top: 2rem;
 }
 
+/* =========================
+   BUTTON LOGIC
+   Matches home page "Open" to popout "Play/Stop"
+   ========================= */
 button {
   flex: 1;
   cursor: pointer;
@@ -108,48 +110,31 @@ button {
   transition: background-color 0.1s ease, color 0.1s ease;
 }
 
+/* Filled state for Play/Stop toggling */
 button.filled {
   background-color: #000 !important;
   color: #fff !important;
 }
 
-/* =========================
-   MAIN TAB: launch-only
-   ========================= */
-
-.launch-actions {
-  display: flex;
-  margin-top: 2rem;
-  width: 100%;
-}
-
+/* Home Page "Open" Button specifically */
 .secondary-btn {
-  flex: 1;
-  cursor: pointer;
-  text-transform: uppercase;
-  background-color: #fff !important;
-  color: #000 !important;
-  border: 1px solid #000; /* Updated to solid black */
+  background-color: #000 !important; /* Start black like your screenshot's "Stop" */
+  color: #fff !important;
+  border: 1px solid #000;
   padding: 1rem;
   font-size: 0.85rem;
   letter-spacing: 0.1rem;
+  width: 100%;
 }
 
-/* Match player button hover state */
 .secondary-btn:hover {
-  background-color: #000 !important;
-  color: #fff !important;
-}
-
-.secondary-btn:active {
-  background-color: #333 !important;
-  color: #fff !important;
+  background-color: #fff !important;
+  color: #000 !important;
 }
 
 /* =========================
    FOOTER & SEPARATOR
    ========================= */
-
 .separator {
   margin-top: 4rem;
   border: 0;
@@ -175,7 +160,6 @@ button.filled {
   display: none; 
 }
 
-/* Show elements in Popout or Mobile mode */
 body.popout #controls, body.popout #credits, body.popout .separator, body.popout #popoutTitle,
 body.mobile-player #controls, body.mobile-player #credits, body.mobile-player .separator, body.mobile-player #popoutTitle {
   display: block;
