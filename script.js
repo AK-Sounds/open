@@ -1,5 +1,5 @@
 (() => {
-  const STATE_KEY = "open_player_settings_v23";
+  const STATE_KEY = "open_player_settings_v24";
 
   function isPopoutMode() { return window.location.hash === "#popout"; }
   function isMobileDevice() {
@@ -37,13 +37,18 @@
   }
 
   // =========================
-  // AUDIO ENGINE (v17 Texture / v23 Wide Brain)
+  // AUDIO ENGINE (Studio Edition)
   // =========================
   let audioContext = null, masterGain = null, reverbNode = null, streamDest = null, heartbeat = null;
   let activeNodes = [], isPlaying = false, isEndingNaturally = false;
   let nextNoteTime = 0, sessionStartTime = 0, timerInterval = null;
   
-  // THE BRAIN: State for the Random Walk (Melody)
+  // RECORDING STATE
+  let mediaRecorder = null;
+  let recordedChunks = [];
+  let isRecording = false;
+
+  // THE BRAIN: Wide Melodic Walker
   let lastNoteIndex = 3; 
   let driftDirection = 1; 
 
@@ -55,12 +60,14 @@
     if (audioContext) return;
     audioContext = new (window.AudioContext || window.webkitAudioContext)();
     
+    // 1. STREAM DESTINATION (Used for both Video Anchor AND Recording)
     streamDest = audioContext.createMediaStreamDestination();
+    
     masterGain = audioContext.createGain();
     masterGain.connect(streamDest);
     masterGain.connect(audioContext.destination);
 
-    // PERSISTENCE: Silent Heartbeat
+    // 2. PERSISTENCE
     const silentBuffer = audioContext.createBuffer(1, 1, audioContext.sampleRate);
     heartbeat = audioContext.createBufferSource();
     heartbeat.buffer = silentBuffer;
@@ -86,9 +93,64 @@
     videoWakeLock.play().catch(() => {});
 
     createReverb();
+    setupKeyboardShortcuts();
   }
 
-  // THE TEXTURE: Standard "Granular" Reverb (v17)
+  // STUDIO FEATURE: DIRECT RECORDING
+  function startStudioRecording() {
+    if (!streamDest || isRecording) return;
+    console.log("Started Recording...");
+    isRecording = true;
+    recordedChunks = [];
+    
+    // Capture the pure digital stream
+    try {
+        mediaRecorder = new MediaRecorder(streamDest.stream, { mimeType: 'audio/webm;codecs=opus' });
+    } catch (e) {
+        mediaRecorder = new MediaRecorder(streamDest.stream); // Fallback
+    }
+
+    mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) recordedChunks.push(event.data);
+    };
+
+    mediaRecorder.onstop = exportRecording;
+    mediaRecorder.start();
+
+    // Auto-stop after 30 seconds
+    setTimeout(() => {
+        if (mediaRecorder.state === "recording") {
+            mediaRecorder.stop();
+            isRecording = false;
+            console.log("Recording Finished.");
+        }
+    }, 30000);
+  }
+
+  function exportRecording() {
+    const blob = new Blob(recordedChunks, { type: 'audio/webm' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.style.display = 'none';
+    a.href = url;
+    a.download = `open-session-${Date.now()}.webm`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+    }, 100);
+  }
+
+  function setupKeyboardShortcuts() {
+    document.addEventListener('keydown', (e) => {
+        if (e.key.toLowerCase() === 'r' && isPlaying) {
+            startStudioRecording();
+        }
+    });
+  }
+
+  // TEXTURE: Grainy Reverb
   function createReverb() {
     const duration = 5.0, decay = 1.5, rate = audioContext.sampleRate, length = Math.floor(rate * duration);
     const impulse = audioContext.createBuffer(2, length, rate);
@@ -104,7 +166,7 @@
     reverbGain.connect(audioContext.destination);
   }
 
-  // THE SOUND: Standard FM Bell (v17 - Sine on Sine)
+  // SOUND: Sine on Sine
   function playFmBell(freq, duration, volume, startTime) {
     const numVoices = 2 + Math.floor(Math.random() * 2);
     let totalAmp = 0;
@@ -133,49 +195,28 @@
     if (activeNodes.length > 200) activeNodes.splice(0, 100);
   }
 
-  // THE BRAIN: Wide Melodic Walker (Feldman/Cage Inspired)
+  // LOGIC: Wide Walker (v23)
   function getNextNote(baseFreq) {
     const scale = scales[runMood] || scales.major;
     const len = scale.length;
     
-    // UPDATED PROBABILITIES for "Angular" Melody:
-    // 50% Step (Anchors the melody)
-    // 25% Skip (Standard movement)
-    // 25% Leap (The Cage/Feldman factor - wider jumps)
-    
     const r = Math.random();
     let shift = 0;
 
-    if (r < 0.50) {
-        // STEP (+/- 1 scale degree)
-        shift = (Math.random() < 0.5 ? -1 : 1);
-    } 
-    else if (r < 0.75) {
-        // SKIP (+/- 2 scale degrees)
-        shift = (Math.random() < 0.5 ? -2 : 2);
-    } 
+    if (r < 0.50) shift = (Math.random() < 0.5 ? -1 : 1);
+    else if (r < 0.75) shift = (Math.random() < 0.5 ? -2 : 2);
     else {
-        // LEAP (Wider jump: +/- 3 to 6 scale degrees)
         const jumpSize = 3 + Math.floor(Math.random() * 4); 
         shift = (Math.random() < 0.5 ? -jumpSize : jumpSize);
     }
 
-    // Drift Intent: Keeps the phrase moving in one direction for a bit
     if (Math.random() < 0.15) driftDirection *= -1; 
     if (Math.random() < 0.4) shift += driftDirection; 
 
     let newIndex = lastNoteIndex + shift;
 
-    // Constrain to playable range (approx 2 octaves)
-    // We bounce off the edges to keep melody centered
-    if (newIndex < 0) {
-        newIndex = 1; 
-        driftDirection = 1; // Force direction up
-    }
-    if (newIndex >= len * 2) {
-        newIndex = (len * 2) - 2;
-        driftDirection = -1; // Force direction down
-    }
+    if (newIndex < 0) { newIndex = 1; driftDirection = 1; }
+    if (newIndex >= len * 2) { newIndex = (len * 2) - 2; driftDirection = -1; }
     
     lastNoteIndex = newIndex;
 
@@ -194,10 +235,7 @@
     }
     while (nextNoteTime < audioContext.currentTime + scheduleAheadTime) {
       const baseFreq = parseFloat(document.getElementById("tone")?.value ?? "110");
-      
       const freq = getNextNote(baseFreq);
-      
-      // Even pacing (v17 style)
       playFmBell(freq, (1 / runDensity) * 2.5, 0.4, nextNoteTime);
       nextNoteTime += (1 / runDensity) * (0.95 + Math.random() * 0.1);
     }
@@ -213,13 +251,8 @@
   async function startFromUI() {
     ensureAudio();
     if (audioContext.state === "suspended") await audioContext.resume();
-    
-    // Pick a scale for this session
     runMood = ["major", "minor", "pentatonic"][Math.floor(Math.random() * 3)];
-    
-    // Reset density
     runDensity = 0.05 + Math.random() * 0.375;
-    
     killImmediate();
     isPlaying = true; setButtonState("playing");
     sessionStartTime = nextNoteTime = audioContext.currentTime;
