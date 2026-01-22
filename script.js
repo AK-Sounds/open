@@ -22,14 +22,13 @@
     const sd = document.getElementById("songDuration");
     const tone = document.getElementById("tone");
     const hzReadout = document.getElementById("hzReadout");
-    const allowedDurations = new Set(["60", "300", "600", "1800", "infinite"]);
-    const savedDur = state && state.songDuration != null ? String(state.songDuration) : null;
-    const durVal = (savedDur && allowedDurations.has(savedDur)) ? savedDur : "60";
-    if (sd) sd.value = durVal;
+    applyValue(sd, state?.songDuration, "60");
     let toneVal = state?.tone ? Math.max(30, Math.min(200, Number(state.tone))) : 110;
     if (tone) tone.value = String(toneVal);
     if (hzReadout) hzReadout.textContent = String(toneVal);
   }
+
+  function applyValue(el, val, def) { if (el) el.value = val || def; }
 
   function setButtonState(state) {
     const playBtn = document.getElementById("playNow");
@@ -39,42 +38,23 @@
     stopBtn.classList.toggle("filled", state !== "playing");
   }
 
-  // =========================
-  // Audio engine
-  // =========================
-  let audioContext = null;
-  let masterGain = null;
-  let reverbNode = null;
-  let reverbGain = null;
-  let streamDest = null;
-  let videoWakeLock = null;
-  let heartbeat = null; // Silent oscillator to keep process alive
+  let audioContext = null, masterGain = null, reverbNode = null, streamDest = null, heartbeat = null;
+  let activeNodes = [], isPlaying = false, isEndingNaturally = false;
+  let nextNoteTime = 0, sessionStartTime = 0, timerInterval = null;
 
-  let activeNodes = [];
-  let isPlaying = false;
-  let isEndingNaturally = false;
-  let nextNoteTime = 0;
-  let sessionStartTime = 0;
-  let timerInterval = null; // Replaces rafId
-
-  const scheduleAheadTime = 0.5;
-  const NATURAL_END_FADE_SEC = 1.2;
-  const NATURAL_END_HOLD_SEC = 0.35;
+  const scheduleAheadTime = 0.5, NATURAL_END_FADE_SEC = 1.2, NATURAL_END_HOLD_SEC = 0.35;
   const scales = { major: [0, 2, 4, 5, 7, 9, 11], minor: [0, 2, 3, 5, 7, 8, 10], pentatonic: [0, 2, 4, 7, 9] };
-  let runMood = "major";
-  let runDensity = 0.2;
+  let runMood = "major", runDensity = 0.2;
 
   function ensureAudio() {
     if (audioContext) return;
     audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    
-    // YOUTUBE STRATEGY: MediaStream + Pixel Anchor
     streamDest = audioContext.createMediaStreamDestination();
     masterGain = audioContext.createGain();
     masterGain.connect(streamDest);
     masterGain.connect(audioContext.destination);
 
-    // THE HEARTBEAT: Silent looping buffer keeps the clock "Hot" 
+    // PERSISTENCE HEARTBEAT
     const silentBuffer = audioContext.createBuffer(1, 1, audioContext.sampleRate);
     heartbeat = audioContext.createBufferSource();
     heartbeat.buffer = silentBuffer;
@@ -87,17 +67,6 @@
       navigator.mediaSession.setActionHandler('play', startFromUI);
       navigator.mediaSession.setActionHandler('pause', stopAllManual);
     }
-
-    if (!videoWakeLock) {
-      videoWakeLock = document.createElement('video');
-      Object.assign(videoWakeLock.style, { position: 'fixed', bottom: '0', right: '0', width: '1px', height: '1px', opacity: '0.01' });
-      videoWakeLock.setAttribute('playsinline', '');
-      videoWakeLock.setAttribute('muted', '');
-      document.body.appendChild(videoWakeLock);
-      videoWakeLock.srcObject = streamDest.stream;
-      videoWakeLock.play().catch(() => {});
-    }
-
     createReverb();
   }
 
@@ -110,7 +79,7 @@
     }
     reverbNode = audioContext.createConvolver();
     reverbNode.buffer = impulse;
-    reverbGain = audioContext.createGain();
+    const reverbGain = audioContext.createGain();
     reverbGain.gain.value = 1.5;
     reverbNode.connect(reverbGain);
     reverbGain.connect(audioContext.destination);
@@ -154,8 +123,7 @@
       const baseFreq = parseFloat(document.getElementById("tone")?.value ?? "110");
       const scale = scales[runMood] || scales.major;
       const freq = baseFreq * Math.pow(2, scale[Math.floor(Math.random() * scale.length)] / 12);
-      const dur = (1 / runDensity) * 2.5;
-      playFmBell(freq, dur, 0.4, nextNoteTime);
+      playFmBell(freq, (1 / runDensity) * 2.5, 0.4, nextNoteTime);
       nextNoteTime += (1 / runDensity) * (0.95 + Math.random() * 0.1);
     }
   }
@@ -199,7 +167,6 @@
   document.addEventListener("DOMContentLoaded", () => {
     if (isPopoutMode()) {
         document.body.classList.add("popout");
-        const form = document.getElementById("songForm");
         applyControls(loadState());
         document.getElementById("tone").addEventListener("input", (e) => {
             document.getElementById("hzReadout").textContent = e.target.value;
@@ -213,7 +180,6 @@
     document.getElementById("launchPlayer")?.addEventListener("click", () => {
       if (!isPopoutMode() && isMobileDevice()) {
         document.body.classList.add("mobile-player");
-        const form = document.getElementById("songForm");
         applyControls(loadState());
         document.getElementById("tone").addEventListener("input", (e) => {
             document.getElementById("hzReadout").textContent = e.target.value;
