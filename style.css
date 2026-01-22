@@ -1,4 +1,4 @@
-/* style.css — Open (v16) Final Fix for Background Persistence & Slider Visibility */
+/* style.css — Open (v16) Final Fix for Background Persistence, Slider Visibility & Home Button */
 
 * { box-sizing: border-box; }
 
@@ -105,13 +105,50 @@ button {
   flex: 1;
   cursor: pointer;
   text-transform: uppercase;
-  transition: background-color 0.1s ease;
+  transition: background-color 0.1s ease, color 0.1s ease;
 }
 
 button.filled {
   background-color: #000 !important;
   color: #fff !important;
 }
+
+/* =========================
+   MAIN TAB: launch-only
+   ========================= */
+
+.launch-actions {
+  display: flex;
+  margin-top: 2rem;
+  width: 100%;
+}
+
+.secondary-btn {
+  flex: 1;
+  cursor: pointer;
+  text-transform: uppercase;
+  background-color: #fff !important;
+  color: #000 !important;
+  border: 1px solid #000; /* Updated to solid black */
+  padding: 1rem;
+  font-size: 0.85rem;
+  letter-spacing: 0.1rem;
+}
+
+/* Match player button hover state */
+.secondary-btn:hover {
+  background-color: #000 !important;
+  color: #fff !important;
+}
+
+.secondary-btn:active {
+  background-color: #333 !important;
+  color: #fff !important;
+}
+
+/* =========================
+   FOOTER & SEPARATOR
+   ========================= */
 
 .separator {
   margin-top: 4rem;
@@ -125,6 +162,10 @@ button.filled {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   opacity: 0.75;
+}
+
+#credits .credit-line {
+  line-height: 1.6;
 }
 
 /* =========================
