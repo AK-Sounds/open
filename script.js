@@ -97,7 +97,7 @@
   let reverbNode = null;
   let reverbGain = null;
   
-  // Cross-Platform Background Persistence Nodes
+  // Persistence Nodes for macOS/Windows Virtual Desktops
   let streamDest = null;
   let videoWakeLock = null;
 
@@ -137,36 +137,47 @@
   }
 
   /**
-   * Refined ensureAudio for macOS and Windows background persistence
+   * Refined ensureAudio using YouTube-style MediaSession and Pixel-Anchor
    */
   function ensureAudio() {
     if (audioContext) return;
 
     audioContext = new (window.AudioContext || window.webkitAudioContext)();
-
-    // Create a MediaStream destination to route the synthesis
     streamDest = audioContext.createMediaStreamDestination();
 
     masterGain = audioContext.createGain();
     masterGain.gain.value = 1;
-    
-    // Connect to the stream destination
     masterGain.connect(streamDest);
+    masterGain.connect(audioContext.destination);
 
-    // Cross-Platform Wake Lock: Use a hidden video element to keep the process "Hot"
+    // 1. Register Media Session (macOS Control Center whitelist)
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: 'Open',
+        artist: 'Stereo Images',
+        album: 'Generative Environment'
+      });
+      
+      navigator.mediaSession.setActionHandler('play', () => startFromUI());
+      navigator.mediaSession.setActionHandler('pause', () => stopAllManual());
+    }
+
+    // 2. Visible Pixel Anchor: bypasses OS throttling for hidden/background windows
     if (!videoWakeLock) {
         videoWakeLock = document.createElement('video');
         videoWakeLock.setAttribute('playsinline', '');
         videoWakeLock.setAttribute('muted', ''); 
-        videoWakeLock.style.display = 'none';
+        videoWakeLock.style.position = 'fixed';
+        videoWakeLock.style.bottom = '0';
+        videoWakeLock.style.right = '0';
+        videoWakeLock.style.width = '1px';
+        videoWakeLock.style.height = '1px';
+        videoWakeLock.style.opacity = '0.01'; // Technically "rendering" to keep OS thread alive
+        document.body.appendChild(videoWakeLock);
         
-        // Linking the generative audio stream to the video element to prevent throttling
         videoWakeLock.srcObject = streamDest.stream;
-        videoWakeLock.play().catch(e => console.log("WakeLock active"));
+        videoWakeLock.play().catch(e => console.log("MediaSession active"));
     }
-
-    // Connect to the actual hardware speakers
-    masterGain.connect(audioContext.destination);
 
     reverbNode = audioContext.createConvolver();
     reverbGain = audioContext.createGain();
