@@ -1,4 +1,4 @@
-/* style.css — Open (v16) Final Precision UI & Persistence */
+/* style.css — Open (v16) Final Precision Hero UI */
 
 * { box-sizing: border-box; }
 
@@ -8,7 +8,7 @@ body {
   font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
   background-color: #fff;
   color: #000;
-  overflow-x: hidden; /* Prevents tiny shifts from the pixel anchor */
+  overflow-x: hidden;
 }
 
 main {
@@ -17,9 +17,7 @@ main {
   padding: 0 2rem;
 }
 
-/* =========================
-   FIX: VISIBLE SLIDER
-   ========================= */
+/* SLIDER VISIBILITY */
 input[type="range"] {
   -webkit-appearance: none;
   appearance: none;
@@ -27,20 +25,22 @@ input[type="range"] {
   height: 2px;
   background: #000; 
   outline: none;
+  padding: 0;
+  margin: 0;
   cursor: pointer;
 }
 
 input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
+  appearance: none;
   width: 12px;
   height: 12px;
   background: #000;
   cursor: pointer;
+  border: none;
 }
 
-/* =========================
-   PIXEL ANCHOR (macOS Background Fix)
-   ========================= */
+/* PIXEL ANCHOR (macOS Background Fix) */
 video {
   pointer-events: none;
   position: fixed;
@@ -52,19 +52,16 @@ video {
   z-index: -1;
 }
 
-/* =========================
-   UI ELEMENTS
-   ========================= */
+/* UI ELEMENTS */
 #popoutTitle {
   display: none;
   font-weight: normal;
   text-transform: uppercase;
-  letter-spacing: 0.8rem; /* Airy title spacing */
-  text-indent: 0.8rem;   /* Counter-balance for centering */
+  letter-spacing: 0.8rem;
+  text-indent: 0.8rem; /* Precision centering */
   border-bottom: 1px solid #000;
   padding-bottom: 1rem;
   margin: 0 0 2rem 0;
-  user-select: none;
   text-align: center;
 }
 
@@ -82,7 +79,6 @@ input, select, button {
   padding: 0.5rem;
   font-family: inherit;
   font-size: 1rem;
-  border-radius: 0;
 }
 
 .form-actions {
@@ -91,9 +87,7 @@ input, select, button {
   margin-top: 2rem;
 }
 
-/* =========================
-   BUTTON LOGIC
-   ========================= */
+/* PLAYER BUTTONS (PLAY/STOP) */
 button {
   flex: 1;
   cursor: pointer;
@@ -109,64 +103,38 @@ button.filled {
   color: #fff !important;
 }
 
-/* HOME PAGE "OPEN" BUTTON
-   Updated to be larger than popout buttons for visual hierarchy 
-*/
+/* HOME PAGE "OPEN" BUTTON: Hero Sizing & Initial White State */
 .secondary-btn {
-  background-color: #000 !important;
-  color: #fff !important;
+  background-color: #fff !important; /* Fixed: Starts white */
+  color: #000 !important;           /* Fixed: Black text */
   border: 1px solid #000;
-  padding: 1.5rem;          /* Increased height for hero presence */
+  padding: 1.5rem;
   
-  /* Precision sizing and centering */
-  font-size: 1.15rem;       /* Larger than PLAY/STOP buttons */
-  letter-spacing: 1.4rem;   /* Ultra-wide airy spacing */
-  text-indent: 1.4rem;      /* Mathematical offset for perfect centering */
+  /* Precision sizing for hero presence */
+  font-size: 1.2rem;         
+  font-weight: normal;
+  letter-spacing: 1.6rem;    
+  text-indent: 1.6rem;       
   
   width: 100%;
   display: block;
   text-align: center;
 }
 
+/* Hover effect for the "OPEN" button */
 .secondary-btn:hover {
-  background-color: #fff !important;
-  color: #000 !important;
+  background-color: #000 !important; /* Turns black on hover */
+  color: #fff !important;
 }
 
-/* =========================
-   FOOTER & SEPARATOR
-   ========================= */
-.separator {
-  margin-top: 4rem;
-  border: 0;
-  border-top: 1px solid #000;
-}
+.separator { margin-top: 4rem; border: 0; border-top: 1px solid #000; }
+#credits { margin-top: 1.5rem; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.75; }
 
-#credits {
-  margin-top: 1.5rem;
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  opacity: 0.75;
-}
-
-/* =========================
-   MODE SWITCHING
-   ========================= */
-#controls, #credits, .separator, #popoutTitle { 
-  display: none; 
-}
-
+/* MODE SWITCHING */
+#controls, #credits, .separator, #popoutTitle { display: none; }
 body.popout #controls, body.popout #credits, body.popout .separator, body.popout #popoutTitle,
 body.mobile-player #controls, body.mobile-player #credits, body.mobile-player .separator, body.mobile-player #popoutTitle {
   display: block;
 }
-
-body.popout #launchOnly, body.mobile-player #launchOnly {
-  display: none;
-}
-
-body.popout main {
-  margin: 2rem auto;
-  max-width: 460px;
-}
+body.popout #launchOnly, body.mobile-player #launchOnly { display: none; }
+body.popout main { margin: 2rem auto; max-width: 460px; }
