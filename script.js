@@ -1,5 +1,5 @@
 (() => {
-  const STATE_KEY = "open_player_settings_v18";
+  const STATE_KEY = "open_player_settings_v20";
 
   function isPopoutMode() { return window.location.hash === "#popout"; }
   function isMobileDevice() {
@@ -37,15 +37,15 @@
   }
 
   // =========================
-  // AUDIO ENGINE (Hi-Fi)
+  // AUDIO ENGINE (Pure Glass)
   // =========================
   let audioContext = null, masterGain = null, reverbNode = null, streamDest = null, heartbeat = null;
   let activeNodes = [], isPlaying = false, isEndingNaturally = false;
   let nextNoteTime = 0, sessionStartTime = 0, timerInterval = null;
   
-  // FIX 3: LOGIC STATE (The "Brain")
-  let lastNoteIndex = 3; // Start in the middle of the scale
-  let driftDirection = 1; // Tendency to move up or down
+  // LOGIC STATE (The "Brain" - Markov Drift)
+  let lastNoteIndex = 3; 
+  let driftDirection = 1; 
 
   const scheduleAheadTime = 0.5, NATURAL_END_FADE_SEC = 1.2, NATURAL_END_HOLD_SEC = 0.35;
   const scales = { major: [0, 2, 4, 5, 7, 9, 11], minor: [0, 2, 3, 5, 7, 8, 10], pentatonic: [0, 2, 4, 7, 9] };
@@ -58,8 +58,7 @@
     streamDest = audioContext.createMediaStreamDestination();
     masterGain = audioContext.createGain();
     
-    // STRICT GAIN STAGING: No compression allowed, so we lower the master slightly 
-    // to accommodate the richer, multi-oscillator voices.
+    // Conservative gain staging for cleaner headroom
     masterGain.gain.value = 0.8; 
     
     masterGain.connect(streamDest);
@@ -92,21 +91,18 @@
     createHighQualityReverb();
   }
 
-  // FIX 2: ATMOSPHERE (Damped Reverb via Offline Rendering)
+  // ATMOSPHERE (Filtered Offline Reverb for realism)
   function createHighQualityReverb() {
     const lengthSec = 4.0;
     const sampleRate = audioContext.sampleRate;
     const lengthSamples = sampleRate * lengthSec;
 
-    // Use OfflineAudioContext to render the Impulse Response (IR)
-    // This allows us to process the noise through a filter *before* using it.
     const offlineCtx = new OfflineAudioContext(2, lengthSamples, sampleRate);
-
     const noiseBuffer = offlineCtx.createBuffer(2, lengthSamples, sampleRate);
+    
     for (let ch = 0; ch < 2; ch++) {
       const data = noiseBuffer.getChannelData(ch);
       for (let i = 0; i < lengthSamples; i++) {
-        // Exponential decay envelope on the raw noise
         data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / lengthSamples, 2.5);
       }
     }
@@ -114,102 +110,90 @@
     const source = offlineCtx.createBufferSource();
     source.buffer = noiseBuffer;
 
-    // The Filter: Simulates air absorption
+    // Lowpass Filter removes metallic "hiss", keeping the reverb dark and atmospheric
     const filter = offlineCtx.createBiquadFilter();
     filter.type = "lowpass";
-    filter.frequency.setValueAtTime(15000, 0); // Start Bright
-    filter.frequency.exponentialRampToValueAtTime(300, lengthSec); // End Dark
+    filter.frequency.setValueAtTime(15000, 0); 
+    filter.frequency.exponentialRampToValueAtTime(300, lengthSec); 
 
     source.connect(filter);
     filter.connect(offlineCtx.destination);
     source.start();
 
-    // Render the IR
     offlineCtx.startRendering().then((renderedBuffer) => {
       reverbNode = audioContext.createConvolver();
       reverbNode.buffer = renderedBuffer;
-      
       const reverbGain = audioContext.createGain();
-      reverbGain.gain.value = 1.2; // Compensate for the energy lost by filtering
-      
+      reverbGain.gain.value = 1.2; 
       reverbNode.connect(reverbGain);
-      reverbGain.connect(masterGain); // Route to master
+      reverbGain.connect(masterGain); 
     });
   }
 
-  // FIX 1: RICHNESS (Dual-Oscillator Voices)
+  // RICHNESS (Pure Sine-on-Sine)
   function playFmBell(freq, duration, volume, startTime) {
-    if (!reverbNode) return; // Wait for IR to render
+    if (!reverbNode) return; 
 
-    // We use TWO carriers:
-    // 1. Sine (Fundamental, Pure)
-    // 2. Triangle (Warmth, Odd Harmonics, Detuned)
-    const carrierSine = audioContext.createOscillator();
-    const carrierTri = audioContext.createOscillator();
+    // CARRIERS: Two Sine Waves (Physical purity)
+    const carrierA = audioContext.createOscillator();
+    const carrierB = audioContext.createOscillator();
     const modulator = audioContext.createOscillator();
 
     const modGain = audioContext.createGain();
     const ampGain = audioContext.createGain();
 
-    carrierSine.type = 'sine';
-    carrierTri.type = 'triangle';
+    carrierA.type = 'sine';
+    carrierB.type = 'sine'; // Ensuring smooth, glass-like texture
     modulator.type = 'sine';
 
-    // Detuning for "Chorus" Effect (Richness)
-    carrierSine.frequency.value = freq;
-    carrierTri.frequency.value = freq;
-    carrierTri.detune.value = 4; // +4 cents detune for subtle beating
+    // Detuning for "Chorus" Effect (Width without roughness)
+    carrierA.frequency.value = freq;
+    carrierB.frequency.value = freq;
+    carrierB.detune.value = 4; // +4 cents detune for subtle, shimmering beat
 
-    // FM Ratios (Non-integer ratios = Bell-like inharmonics)
     const ratio = 1.4 + Math.random() * 0.2; 
     modulator.frequency.value = freq * ratio;
     
-    // FM Depth
     const modIndex = 150 + Math.random() * 100;
     modGain.gain.setValueAtTime(modIndex, startTime);
     modGain.gain.exponentialRampToValueAtTime(1, startTime + duration * 0.8);
 
-    // Amplitude Envelope (No compression, just careful curves)
-    // We scale volume down by 0.6 because we now have 2 oscillators summing together
+    // Amplitude Envelope
+    // Adjusted gain to 0.6 since we are summing two pure sines
     const safeVol = volume * 0.6; 
     
     ampGain.gain.setValueAtTime(0, startTime);
-    ampGain.gain.linearRampToValueAtTime(safeVol, startTime + 0.02); // Soft attack
+    ampGain.gain.linearRampToValueAtTime(safeVol, startTime + 0.02); 
     ampGain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
 
-    // Routing
     modulator.connect(modGain);
     
     // Modulate BOTH carriers
-    modGain.connect(carrierSine.frequency);
-    modGain.connect(carrierTri.frequency);
+    modGain.connect(carrierA.frequency);
+    modGain.connect(carrierB.frequency);
 
-    carrierSine.connect(ampGain);
-    carrierTri.connect(ampGain);
+    carrierA.connect(ampGain);
+    carrierB.connect(ampGain);
 
     ampGain.connect(reverbNode);
     ampGain.connect(masterGain);
 
-    // Timing
     const stopTime = startTime + duration + 0.1;
-    [carrierSine, carrierTri, modulator].forEach(node => {
+    [carrierA, carrierB, modulator].forEach(node => {
         node.start(startTime);
         node.stop(stopTime);
     });
 
-    activeNodes.push(carrierSine, carrierTri, modulator, modGain, ampGain);
+    activeNodes.push(carrierA, carrierB, modulator, modGain, ampGain);
     if (activeNodes.length > 250) activeNodes.splice(0, 100);
   }
 
-  // FIX 3: INTENT (Markov Chain / Random Walk)
+  // INTENT (Markov Chain / Random Walk)
   function getNextNote(baseFreq) {
     const scale = scales[runMood] || scales.major;
     const len = scale.length;
 
-    // "Lazy" Probability:
-    // 50% chance: Step +/- 1 index
-    // 30% chance: Step +/- 2 indices
-    // 20% chance: Jump anywhere
+    // "Lazy" Probability: Prefers stepping over jumping
     const r = Math.random();
     let shift = 0;
 
@@ -217,21 +201,17 @@
     else if (r < 0.8) shift = (Math.random() < 0.5 ? -2 : 2);
     else shift = Math.floor(Math.random() * len) - lastNoteIndex;
 
-    // Apply drift tendency
-    if (Math.random() < 0.1) driftDirection *= -1; // Occasionally change intent
+    // Drift tendency
+    if (Math.random() < 0.1) driftDirection *= -1; 
     if (Math.random() < 0.3) shift += driftDirection; 
 
     let newIndex = lastNoteIndex + shift;
 
-    // Wrap around octaves (keep it constrained to 2 octaves mostly)
-    // We effectively clamp the index to keep it "musical"
     if (newIndex < 0) newIndex = Math.abs(newIndex);
     if (newIndex >= len * 2) newIndex = len * 2 - (newIndex % len);
     
     lastNoteIndex = newIndex;
 
-    // Calculate Freq
-    // We map the index to the scale, adding octaves for higher indices
     const octave = Math.floor(newIndex / len);
     const noteDegree = newIndex % len;
     const interval = scale[noteDegree];
@@ -248,15 +228,11 @@
     while (nextNoteTime < audioContext.currentTime + scheduleAheadTime) {
       const baseFreq = parseFloat(document.getElementById("tone")?.value ?? "110");
       
-      // Use the "Brain" to pick the note
       const freq = getNextNote(baseFreq);
-      
-      // Slower, more deliberate pacing (Feldman-esque)
       const dur = (1 / runDensity) * 3.5; 
       
       playFmBell(freq, dur, 0.3, nextNoteTime);
       
-      // Allow for "negative space" (silence)
       const space = (1 / runDensity) * (1.0 + Math.random() * 0.5);
       nextNoteTime += space;
     }
@@ -273,7 +249,7 @@
     ensureAudio();
     if (audioContext.state === "suspended") await audioContext.resume();
     runMood = ["major", "minor", "pentatonic"][Math.floor(Math.random() * 3)];
-    runDensity = 0.05 + Math.random() * 0.30; // Slightly sparser for "Open" feel
+    runDensity = 0.05 + Math.random() * 0.30; 
     killImmediate();
     isPlaying = true; setButtonState("playing");
     sessionStartTime = nextNoteTime = audioContext.currentTime;
