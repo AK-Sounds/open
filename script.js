@@ -1,5 +1,5 @@
 (() => {
-  const STATE_KEY = "open_player_settings_v16";
+  const STATE_KEY = "open_player_settings_v18";
 
   function isPopoutMode() { return window.location.hash === "#popout"; }
   function isMobileDevice() {
@@ -37,11 +37,15 @@
   }
 
   // =========================
-  // Audio engine
+  // AUDIO ENGINE (Hi-Fi)
   // =========================
   let audioContext = null, masterGain = null, reverbNode = null, streamDest = null, heartbeat = null;
   let activeNodes = [], isPlaying = false, isEndingNaturally = false;
   let nextNoteTime = 0, sessionStartTime = 0, timerInterval = null;
+  
+  // FIX 3: LOGIC STATE (The "Brain")
+  let lastNoteIndex = 3; // Start in the middle of the scale
+  let driftDirection = 1; // Tendency to move up or down
 
   const scheduleAheadTime = 0.5, NATURAL_END_FADE_SEC = 1.2, NATURAL_END_HOLD_SEC = 0.35;
   const scales = { major: [0, 2, 4, 5, 7, 9, 11], minor: [0, 2, 3, 5, 7, 8, 10], pentatonic: [0, 2, 4, 7, 9] };
@@ -50,12 +54,17 @@
   function ensureAudio() {
     if (audioContext) return;
     audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    
     streamDest = audioContext.createMediaStreamDestination();
     masterGain = audioContext.createGain();
+    
+    // STRICT GAIN STAGING: No compression allowed, so we lower the master slightly 
+    // to accommodate the richer, multi-oscillator voices.
+    masterGain.gain.value = 0.8; 
+    
     masterGain.connect(streamDest);
     masterGain.connect(audioContext.destination);
 
-    // PERSISTENCE HEARTBEAT: Forces macOS to keep thread alive
     const silentBuffer = audioContext.createBuffer(1, 1, audioContext.sampleRate);
     heartbeat = audioContext.createBufferSource();
     heartbeat.buffer = silentBuffer;
@@ -68,50 +77,166 @@
       navigator.mediaSession.setActionHandler('play', startFromUI);
       navigator.mediaSession.setActionHandler('pause', stopAllManual);
     }
-    createReverb();
-  }
-
-  function createReverb() {
-    const duration = 5.0, decay = 1.5, rate = audioContext.sampleRate, length = Math.floor(rate * duration);
-    const impulse = audioContext.createBuffer(2, length, rate);
-    for (let ch = 0; ch < 2; ch++) {
-      const data = impulse.getChannelData(ch);
-      for (let i = 0; i < length; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, decay);
+    
+    let videoWakeLock = document.querySelector('video');
+    if (!videoWakeLock) {
+        videoWakeLock = document.createElement('video');
+        Object.assign(videoWakeLock.style, { position: 'fixed', bottom: '0', right: '0', width: '1px', height: '1px', opacity: '0.01', pointerEvents: 'none', zIndex: '-1' });
+        videoWakeLock.setAttribute('playsinline', '');
+        videoWakeLock.setAttribute('muted', '');
+        document.body.appendChild(videoWakeLock);
     }
-    reverbNode = audioContext.createConvolver();
-    reverbNode.buffer = impulse;
-    const reverbGain = audioContext.createGain();
-    reverbGain.gain.value = 1.5;
-    reverbNode.connect(reverbGain);
-    reverbGain.connect(audioContext.destination);
+    videoWakeLock.srcObject = streamDest.stream;
+    videoWakeLock.play().catch(() => {});
+
+    createHighQualityReverb();
   }
 
+  // FIX 2: ATMOSPHERE (Damped Reverb via Offline Rendering)
+  function createHighQualityReverb() {
+    const lengthSec = 4.0;
+    const sampleRate = audioContext.sampleRate;
+    const lengthSamples = sampleRate * lengthSec;
+
+    // Use OfflineAudioContext to render the Impulse Response (IR)
+    // This allows us to process the noise through a filter *before* using it.
+    const offlineCtx = new OfflineAudioContext(2, lengthSamples, sampleRate);
+
+    const noiseBuffer = offlineCtx.createBuffer(2, lengthSamples, sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const data = noiseBuffer.getChannelData(ch);
+      for (let i = 0; i < lengthSamples; i++) {
+        // Exponential decay envelope on the raw noise
+        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / lengthSamples, 2.5);
+      }
+    }
+
+    const source = offlineCtx.createBufferSource();
+    source.buffer = noiseBuffer;
+
+    // The Filter: Simulates air absorption
+    const filter = offlineCtx.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.setValueAtTime(15000, 0); // Start Bright
+    filter.frequency.exponentialRampToValueAtTime(300, lengthSec); // End Dark
+
+    source.connect(filter);
+    filter.connect(offlineCtx.destination);
+    source.start();
+
+    // Render the IR
+    offlineCtx.startRendering().then((renderedBuffer) => {
+      reverbNode = audioContext.createConvolver();
+      reverbNode.buffer = renderedBuffer;
+      
+      const reverbGain = audioContext.createGain();
+      reverbGain.gain.value = 1.2; // Compensate for the energy lost by filtering
+      
+      reverbNode.connect(reverbGain);
+      reverbGain.connect(masterGain); // Route to master
+    });
+  }
+
+  // FIX 1: RICHNESS (Dual-Oscillator Voices)
   function playFmBell(freq, duration, volume, startTime) {
-    const numVoices = 2 + Math.floor(Math.random() * 2);
-    let totalAmp = 0;
-    const voices = Array.from({length: numVoices}, () => {
-      const v = { modRatio: 1.5 + Math.random() * 2.5, modIndex: 1 + Math.random() * 4, amp: Math.random() };
-      totalAmp += v.amp;
-      return v;
+    if (!reverbNode) return; // Wait for IR to render
+
+    // We use TWO carriers:
+    // 1. Sine (Fundamental, Pure)
+    // 2. Triangle (Warmth, Odd Harmonics, Detuned)
+    const carrierSine = audioContext.createOscillator();
+    const carrierTri = audioContext.createOscillator();
+    const modulator = audioContext.createOscillator();
+
+    const modGain = audioContext.createGain();
+    const ampGain = audioContext.createGain();
+
+    carrierSine.type = 'sine';
+    carrierTri.type = 'triangle';
+    modulator.type = 'sine';
+
+    // Detuning for "Chorus" Effect (Richness)
+    carrierSine.frequency.value = freq;
+    carrierTri.frequency.value = freq;
+    carrierTri.detune.value = 4; // +4 cents detune for subtle beating
+
+    // FM Ratios (Non-integer ratios = Bell-like inharmonics)
+    const ratio = 1.4 + Math.random() * 0.2; 
+    modulator.frequency.value = freq * ratio;
+    
+    // FM Depth
+    const modIndex = 150 + Math.random() * 100;
+    modGain.gain.setValueAtTime(modIndex, startTime);
+    modGain.gain.exponentialRampToValueAtTime(1, startTime + duration * 0.8);
+
+    // Amplitude Envelope (No compression, just careful curves)
+    // We scale volume down by 0.6 because we now have 2 oscillators summing together
+    const safeVol = volume * 0.6; 
+    
+    ampGain.gain.setValueAtTime(0, startTime);
+    ampGain.gain.linearRampToValueAtTime(safeVol, startTime + 0.02); // Soft attack
+    ampGain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+
+    // Routing
+    modulator.connect(modGain);
+    
+    // Modulate BOTH carriers
+    modGain.connect(carrierSine.frequency);
+    modGain.connect(carrierTri.frequency);
+
+    carrierSine.connect(ampGain);
+    carrierTri.connect(ampGain);
+
+    ampGain.connect(reverbNode);
+    ampGain.connect(masterGain);
+
+    // Timing
+    const stopTime = startTime + duration + 0.1;
+    [carrierSine, carrierTri, modulator].forEach(node => {
+        node.start(startTime);
+        node.stop(stopTime);
     });
 
-    voices.forEach(voice => {
-      const carrier = audioContext.createOscillator(), modulator = audioContext.createOscillator();
-      const modGain = audioContext.createGain(), ampGain = audioContext.createGain();
-      carrier.frequency.value = freq + (Math.random() - 0.5) * 2;
-      modulator.frequency.value = freq * voice.modRatio;
-      modGain.gain.setValueAtTime(freq * voice.modIndex, startTime);
-      modGain.gain.exponentialRampToValueAtTime(freq * 0.5, startTime + duration);
-      ampGain.gain.setValueAtTime(0.0001, startTime);
-      ampGain.gain.exponentialRampToValueAtTime((voice.amp / totalAmp) * volume, startTime + 0.01);
-      ampGain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
-      modulator.connect(modGain); modGain.connect(carrier.frequency);
-      carrier.connect(ampGain); ampGain.connect(reverbNode); ampGain.connect(masterGain);
-      modulator.start(startTime); carrier.start(startTime);
-      modulator.stop(startTime + duration); carrier.stop(startTime + duration);
-      activeNodes.push(carrier, modulator, modGain, ampGain);
-    });
-    if (activeNodes.length > 200) activeNodes.splice(0, 100);
+    activeNodes.push(carrierSine, carrierTri, modulator, modGain, ampGain);
+    if (activeNodes.length > 250) activeNodes.splice(0, 100);
+  }
+
+  // FIX 3: INTENT (Markov Chain / Random Walk)
+  function getNextNote(baseFreq) {
+    const scale = scales[runMood] || scales.major;
+    const len = scale.length;
+
+    // "Lazy" Probability:
+    // 50% chance: Step +/- 1 index
+    // 30% chance: Step +/- 2 indices
+    // 20% chance: Jump anywhere
+    const r = Math.random();
+    let shift = 0;
+
+    if (r < 0.5) shift = (Math.random() < 0.5 ? -1 : 1);
+    else if (r < 0.8) shift = (Math.random() < 0.5 ? -2 : 2);
+    else shift = Math.floor(Math.random() * len) - lastNoteIndex;
+
+    // Apply drift tendency
+    if (Math.random() < 0.1) driftDirection *= -1; // Occasionally change intent
+    if (Math.random() < 0.3) shift += driftDirection; 
+
+    let newIndex = lastNoteIndex + shift;
+
+    // Wrap around octaves (keep it constrained to 2 octaves mostly)
+    // We effectively clamp the index to keep it "musical"
+    if (newIndex < 0) newIndex = Math.abs(newIndex);
+    if (newIndex >= len * 2) newIndex = len * 2 - (newIndex % len);
+    
+    lastNoteIndex = newIndex;
+
+    // Calculate Freq
+    // We map the index to the scale, adding octaves for higher indices
+    const octave = Math.floor(newIndex / len);
+    const noteDegree = newIndex % len;
+    const interval = scale[noteDegree];
+    
+    return baseFreq * Math.pow(2, (interval / 12) + octave);
   }
 
   function scheduler() {
@@ -122,10 +247,18 @@
     }
     while (nextNoteTime < audioContext.currentTime + scheduleAheadTime) {
       const baseFreq = parseFloat(document.getElementById("tone")?.value ?? "110");
-      const scale = scales[runMood] || scales.major;
-      const freq = baseFreq * Math.pow(2, scale[Math.floor(Math.random() * scale.length)] / 12);
-      playFmBell(freq, (1 / runDensity) * 2.5, 0.4, nextNoteTime);
-      nextNoteTime += (1 / runDensity) * (0.95 + Math.random() * 0.1);
+      
+      // Use the "Brain" to pick the note
+      const freq = getNextNote(baseFreq);
+      
+      // Slower, more deliberate pacing (Feldman-esque)
+      const dur = (1 / runDensity) * 3.5; 
+      
+      playFmBell(freq, dur, 0.3, nextNoteTime);
+      
+      // Allow for "negative space" (silence)
+      const space = (1 / runDensity) * (1.0 + Math.random() * 0.5);
+      nextNoteTime += space;
     }
   }
 
@@ -133,18 +266,18 @@
     if (timerInterval) clearInterval(timerInterval);
     activeNodes.forEach(n => { try { n.stop(); } catch (e) {} });
     activeNodes = []; isPlaying = isEndingNaturally = false;
-    if (masterGain) { masterGain.gain.cancelScheduledValues(audioContext.currentTime); masterGain.gain.setValueAtTime(1, audioContext.currentTime); }
+    if (masterGain) { masterGain.gain.cancelScheduledValues(audioContext.currentTime); masterGain.gain.setValueAtTime(0.8, audioContext.currentTime); }
   }
 
   async function startFromUI() {
     ensureAudio();
     if (audioContext.state === "suspended") await audioContext.resume();
     runMood = ["major", "minor", "pentatonic"][Math.floor(Math.random() * 3)];
-    runDensity = 0.05 + Math.random() * 0.375;
+    runDensity = 0.05 + Math.random() * 0.30; // Slightly sparser for "Open" feel
     killImmediate();
     isPlaying = true; setButtonState("playing");
     sessionStartTime = nextNoteTime = audioContext.currentTime;
-    timerInterval = setInterval(scheduler, 100); // Robust background timing
+    timerInterval = setInterval(scheduler, 100); 
   }
 
   function stopAllManual() {
@@ -189,7 +322,6 @@
         document.getElementById("playNow").onclick = startFromUI;
         document.getElementById("stop").onclick = stopAllManual;
       } else {
-        // Optimized window launch size
         window.open(`${window.location.href.split("#")[0]}#popout`, "open_player", "width=500,height=680,resizable=yes");
       }
     });
