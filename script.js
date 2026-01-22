@@ -1,5 +1,5 @@
 (() => {
-  const STATE_KEY = "open_player_settings_v17";
+  const STATE_KEY = "open_player_settings_v21";
 
   function isPopoutMode() { return window.location.hash === "#popout"; }
   function isMobileDevice() {
@@ -37,11 +37,15 @@
   }
 
   // =========================
-  // AUDIO ENGINE (Pro Persistence Model)
+  // AUDIO ENGINE (v17 Texture / v21 Brain)
   // =========================
   let audioContext = null, masterGain = null, reverbNode = null, streamDest = null, heartbeat = null;
   let activeNodes = [], isPlaying = false, isEndingNaturally = false;
   let nextNoteTime = 0, sessionStartTime = 0, timerInterval = null;
+  
+  // THE BRAIN: State for the Random Walk (Melody)
+  let lastNoteIndex = 3; 
+  let driftDirection = 1; 
 
   const scheduleAheadTime = 0.5, NATURAL_END_FADE_SEC = 1.2, NATURAL_END_HOLD_SEC = 0.35;
   const scales = { major: [0, 2, 4, 5, 7, 9, 11], minor: [0, 2, 3, 5, 7, 8, 10], pentatonic: [0, 2, 4, 7, 9] };
@@ -51,13 +55,12 @@
     if (audioContext) return;
     audioContext = new (window.AudioContext || window.webkitAudioContext)();
     
-    // 1. Media Stream for Video Anchor
     streamDest = audioContext.createMediaStreamDestination();
     masterGain = audioContext.createGain();
     masterGain.connect(streamDest);
     masterGain.connect(audioContext.destination);
 
-    // 2. Silent Heartbeat to prevent OS throttling
+    // PERSISTENCE: Silent Heartbeat
     const silentBuffer = audioContext.createBuffer(1, 1, audioContext.sampleRate);
     heartbeat = audioContext.createBufferSource();
     heartbeat.buffer = silentBuffer;
@@ -65,14 +68,12 @@
     heartbeat.start();
     heartbeat.connect(audioContext.destination);
 
-    // 3. Media Session API
     if ('mediaSession' in navigator) {
       navigator.mediaSession.metadata = new MediaMetadata({ title: 'Open', artist: 'Stereo Images' });
       navigator.mediaSession.setActionHandler('play', startFromUI);
       navigator.mediaSession.setActionHandler('pause', stopAllManual);
     }
     
-    // 4. Inject Pixel Anchor
     let videoWakeLock = document.querySelector('video');
     if (!videoWakeLock) {
         videoWakeLock = document.createElement('video');
@@ -87,6 +88,8 @@
     createReverb();
   }
 
+  // THE TEXTURE: Standard "Granular" Reverb (v17)
+  // - Keeping the raw impulse response for texture
   function createReverb() {
     const duration = 5.0, decay = 1.5, rate = audioContext.sampleRate, length = Math.floor(rate * duration);
     const impulse = audioContext.createBuffer(2, length, rate);
@@ -102,6 +105,8 @@
     reverbGain.connect(audioContext.destination);
   }
 
+  // THE SOUND: Standard FM Bell (v17)
+  // - Keeping the Sine-on-Sine logic you prefer
   function playFmBell(freq, duration, volume, startTime) {
     const numVoices = 2 + Math.floor(Math.random() * 2);
     let totalAmp = 0;
@@ -130,6 +135,42 @@
     if (activeNodes.length > 200) activeNodes.splice(0, 100);
   }
 
+  // THE BRAIN: Markov Chain / Random Walk
+  // - This is the new logic that creates "Melody" instead of randomness
+  function getNextNote(baseFreq) {
+    const scale = scales[runMood] || scales.major;
+    const len = scale.length;
+    
+    // 
+    // 50% chance: Step 1 note (Melodic)
+    // 30% chance: Step 2 notes (Harmonic)
+    // 20% chance: Jump (Surprise)
+    const r = Math.random();
+    let shift = 0;
+
+    if (r < 0.5) shift = (Math.random() < 0.5 ? -1 : 1);
+    else if (r < 0.8) shift = (Math.random() < 0.5 ? -2 : 2);
+    else shift = Math.floor(Math.random() * len) - lastNoteIndex;
+
+    // Drift Intent
+    if (Math.random() < 0.1) driftDirection *= -1; 
+    if (Math.random() < 0.3) shift += driftDirection; 
+
+    let newIndex = lastNoteIndex + shift;
+
+    // Constrain to playable range (approx 2 octaves)
+    if (newIndex < 0) newIndex = Math.abs(newIndex);
+    if (newIndex >= len * 2) newIndex = len * 2 - (newIndex % len);
+    
+    lastNoteIndex = newIndex;
+
+    const octave = Math.floor(newIndex / len);
+    const noteDegree = newIndex % len;
+    const interval = scale[noteDegree];
+    
+    return baseFreq * Math.pow(2, (interval / 12) + octave);
+  }
+
   function scheduler() {
     if (!isPlaying) return;
     const durationInput = document.getElementById("songDuration")?.value ?? "60";
@@ -138,8 +179,11 @@
     }
     while (nextNoteTime < audioContext.currentTime + scheduleAheadTime) {
       const baseFreq = parseFloat(document.getElementById("tone")?.value ?? "110");
-      const scale = scales[runMood] || scales.major;
-      const freq = baseFreq * Math.pow(2, scale[Math.floor(Math.random() * scale.length)] / 12);
+      
+      // NEW: Use the brain instead of the dice
+      const freq = getNextNote(baseFreq);
+      
+      // OLD: Keep the "predictable" v17 pacing you liked
       playFmBell(freq, (1 / runDensity) * 2.5, 0.4, nextNoteTime);
       nextNoteTime += (1 / runDensity) * (0.95 + Math.random() * 0.1);
     }
@@ -160,7 +204,6 @@
     killImmediate();
     isPlaying = true; setButtonState("playing");
     sessionStartTime = nextNoteTime = audioContext.currentTime;
-    // Uses setInterval instead of requestAnimationFrame for background stability
     timerInterval = setInterval(scheduler, 100); 
   }
 
@@ -206,7 +249,6 @@
         document.getElementById("playNow").onclick = startFromUI;
         document.getElementById("stop").onclick = stopAllManual;
       } else {
-        // Optimized size for 1.5rem title text
         window.open(`${window.location.href.split("#")[0]}#popout`, "open_player", "width=500,height=680,resizable=yes");
       }
     });
