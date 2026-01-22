@@ -1,4 +1,4 @@
-/* style.css — Open (v16) Final Consolidated Version */
+/* style.css — Open (v16) Final Precision Alignment */
 
 * { box-sizing: border-box; }
 
@@ -8,7 +8,7 @@ body {
   font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
   background-color: #fff;
   color: #000;
-  overflow-x: hidden; /* Prevents tiny shifts from the pixel anchor */
+  overflow-x: hidden;
 }
 
 main {
@@ -69,11 +69,13 @@ video {
   display: none;
   font-weight: normal;
   text-transform: uppercase;
-  letter-spacing: 0.5rem; /* Matches wide title spacing */
+  letter-spacing: 0.8rem; /* Increased to match your popout screenshot */
+  text-indent: 0.8rem;   /* Counter-balance for perfect centering */
   border-bottom: 1px solid #000;
   padding-bottom: 1rem;
   margin: 0 0 2rem 0;
   user-select: none;
+  text-align: center;
 }
 
 .form-group {
@@ -101,34 +103,34 @@ input[type="number"], select, button {
 
 /* =========================
    BUTTON LOGIC
-   Ensures absolute font and style parity between pages
    ========================= */
 button {
   flex: 1;
   cursor: pointer;
   text-transform: uppercase;
-  font-weight: normal;        /* Matches the "lighter" look of the title */
-  letter-spacing: 0.15rem;    /* Balanced button spacing */
+  font-weight: normal;
+  letter-spacing: 0.2rem;
+  text-indent: 0.2rem;
   transition: background-color 0.1s ease, color 0.1s ease;
 }
 
-/* Filled state for Play/Stop toggling */
 button.filled {
   background-color: #000 !important;
   color: #fff !important;
 }
 
-/* Home Page "Open" Button */
+/* Home Page "Open" Button - Precision Centering */
 .secondary-btn {
   background-color: #000 !important;
   color: #fff !important;
   border: 1px solid #000;
-  padding: 1rem;
-  font-size: 0.85rem;
-  letter-spacing: 0.5rem;     /* Perfectly matches the popout title spacing */
-  text-indent: 0.5rem;        /* Centers the text despite large trailing letter-spacing */
+  padding: 1.2rem;
+  font-size: 0.75rem;     /* Slightly smaller for more elegance */
+  letter-spacing: 1.2rem;  /* Wide spacing to match the aesthetic */
+  text-indent: 1.2rem;    /* CRITICAL: Offsets the last letter's spacing to center the word */
   width: 100%;
   display: block;
+  text-align: center;
 }
 
 .secondary-btn:hover {
@@ -151,10 +153,6 @@ button.filled {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   opacity: 0.75;
-}
-
-#credits .credit-line {
-  line-height: 1.6;
 }
 
 /* =========================
