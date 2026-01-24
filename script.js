@@ -1,5 +1,5 @@
 (() => {
-  const STATE_KEY = "open_player_final_v61";
+  const STATE_KEY = "open_player_final_v65";
 
   // =========================
   // UTILITIES & UI
@@ -61,7 +61,7 @@
   }
 
   // =========================
-  // AUDIO ENGINE (v27 Exact)
+  // AUDIO ENGINE (v27 / Monophonic)
   // =========================
   function createReverbBuffer(ctx) {
     const duration = 5.0, decay = 1.5, rate = ctx.sampleRate, length = Math.floor(rate * duration);
@@ -126,7 +126,7 @@
   }
 
   // ==========================================
-  // THE SHADOW WALKER (Minor-Biased Logic)
+  // HARMONIC ENGINE
   // ==========================================
   
   let circlePosition = 0; 
@@ -139,14 +139,13 @@
     let semitones = (pos * 7) % 12;
     let rootOffset = semitones;
     
-    // Relative Minor shift
     if (minorMode) {
         rootOffset = (semitones + 9) % 12; 
     }
 
     const intervals = minorMode 
-        ? [0, 2, 3, 5, 7, 8, 10] // Natural Minor
-        : [0, 2, 4, 5, 7, 9, 11]; // Major
+        ? [0, 2, 3, 5, 7, 8, 10] 
+        : [0, 2, 4, 5, 7, 9, 11];
 
     const len = intervals.length;
     const octave = Math.floor(scaleIndex / len);
@@ -156,34 +155,44 @@
     return baseFreq * Math.pow(2, noteValue / 12);
   }
 
-  // MINOR GRAVITY LOGIC
-  function updateHarmonyState() {
+  // UPDATED HARMONY LOGIC (70/30 Split)
+  function updateHarmonyState(durationInput) {
       const r = Math.random();
-      
-      if (!isMinor) {
-          // WE ARE MAJOR (Unstable)
-          // 80% Chance -> Sink into Relative Minor
-          // 20% Chance -> Move Circle (Stay Major)
-          if (r < 0.8) {
-              isMinor = true;
-              console.log(`Modulating: Sinking to Relative Minor`);
-          } else {
-              const dir = Math.random() < 0.9 ? 1 : -1;
-              circlePosition += dir;
-              console.log(`Modulating: Circle Step (Major)`);
+      let totalSeconds = (durationInput === "infinite") ? 99999 : parseFloat(durationInput);
+
+      if (totalSeconds <= 60) return; // 1 Min: Locked
+
+      if (totalSeconds <= 300) { // 5 Mins: Pivot Only
+          if (r < 0.2) { 
+              isMinor = !isMinor;
+              console.log(`Modulating (5m): ${isMinor ? 'Relative Minor' : 'Relative Major'}`);
           }
-      } else {
-          // WE ARE MINOR (Stable)
-          // 30% Chance -> Surface to Relative Major
-          // 70% Chance -> Move Circle (Stay Minor)
-          if (r < 0.3) {
-              isMinor = false;
-              console.log(`Modulating: Surfacing to Relative Major`);
+          return;
+      }
+
+      if (totalSeconds <= 1800) { // 10-30 Mins: Journey
+          if (r < 0.4) {
+              isMinor = !isMinor; 
           } else {
-              const dir = Math.random() < 0.9 ? 1 : -1;
+              const dir = Math.random() < 0.7 ? 1 : -1; 
               circlePosition += dir;
-              console.log(`Modulating: Circle Step (Minor)`);
+              console.log(`Modulating (Drift): Circle ${circlePosition}`);
           }
+          return;
+      }
+
+      // INFINITE: The Shadow Walker (70/30 Split)
+      if (durationInput === "infinite") {
+          if (!isMinor) {
+              // If Major -> 70% chance to sink to Minor
+              if (r < 0.7) isMinor = true; 
+              else circlePosition += (Math.random() < 0.9 ? 1 : -1);
+          } else {
+              // If Minor -> 30% chance to rise to Major
+              if (r < 0.3) isMinor = false; 
+              else circlePosition += (Math.random() < 0.9 ? 1 : -1);
+          }
+          console.log(`Modulating (Shadow): Circle ${circlePosition}, Minor: ${isMinor}`);
       }
   }
 
@@ -254,31 +263,38 @@
 
     const baseFreq = parseFloat(document.getElementById("tone")?.value ?? "110");
     const density = getDynamicDensity(elapsed);
-    const noteDur = (1 / density) * 2.5;
+    let noteDur = (1 / density) * 2.5;
 
     while (nextTimeA < now + 0.5) {
       if (isApproachingEnd && !isEndingNaturally) {
-        // End condition: C Major (Home) + Root Note
         const pos = circlePosition % 12;
-        const isHomeKey = (pos === 0) && (!isMinor);
+        const isHomeKey = (pos === 0);
         const isRootNote = (patternIdxA % 7 === 0);
 
-        if (isHomeKey && isRootNote) {
+        let allowEnd = false;
+        
+        if (durationInput === "infinite") {
+            if (isHomeKey && !isMinor && isRootNote) allowEnd = true;
+        } else {
+            if (isRootNote) allowEnd = true;
+        }
+
+        if (allowEnd) {
            const freq = getScaleNote(baseFreq, patternIdxA, circlePosition, isMinor);
-           scheduleNote(audioContext, masterGain, freq, nextTimeA, 25.0, 0.4, liveReverbBuffer);
+           // Final note gets Bass treatment for closure
+           scheduleNote(audioContext, masterGain, freq * 0.25, nextTimeA, 25.0, 0.5, liveReverbBuffer);
            beginNaturalEnd();
            return;
         }
       }
 
-      // SLOWER PACING:
-      // Wait for 18 notes (instead of 10) before considering a change
-      // Low probability (15%) per check
-      if (notesSinceModulation > 18 && Math.random() < 0.15) {
-          updateHarmonyState();
+      // UPDATED PACING: 16 notes (~2 mins), 10% chance
+      if (notesSinceModulation > 16 && Math.random() < 0.10) {
+          updateHarmonyState(durationInput);
           notesSinceModulation = 0;
       }
 
+      // MELODY WALKER
       const r = Math.random();
       let shift = 0;
       if (r < 0.4) shift = 1;
@@ -289,7 +305,18 @@
       if (patternIdxA > 6) patternIdxA = 6;
       if (patternIdxA < -4) patternIdxA = -4;
 
-      const freq = getScaleNote(baseFreq, patternIdxA, circlePosition, isMinor);
+      let freq = getScaleNote(baseFreq, patternIdxA, circlePosition, isMinor);
+      
+      // BASS TOLL LOGIC
+      // Check if current note index is a multiple of 7 (Root Note)
+      if (patternIdxA % 7 === 0) {
+          // 15% Chance to drop 2 octaves (Bass Toll)
+          if (Math.random() < 0.15) {
+              freq = freq * 0.25; // Drop 2 octaves
+              noteDur = 25.0; // Extend duration for weight
+              console.log("Bass Toll");
+          }
+      }
       
       scheduleNote(audioContext, masterGain, freq, nextTimeA, noteDur, 0.4, liveReverbBuffer);
       
@@ -377,28 +404,31 @@
     offlineMaster.connect(offlineCtx.destination);
     const offlineReverbBuffer = createReverbBuffer(offlineCtx);
 
+    const durationInput = document.getElementById("songDuration")?.value ?? "60";
     const now = audioContext.currentTime;
     const elapsed = now - sessionStartTime;
     const baseFreq = parseFloat(document.getElementById("tone")?.value ?? "110");
     const density = getDynamicDensity(elapsed);
-    const noteDur = (1 / density) * 2.5;
+    let noteDur = (1 / density) * 2.5;
 
     let localCircle = circlePosition;
     let localMinor = isMinor;
     let localIdx = patternIdxA;
     let localTime = 0;
     let localModCount = 0;
+    let totalSeconds = (durationInput === "infinite") ? 99999 : parseFloat(durationInput);
 
     while (localTime < 60) {
-       // Offline logic duplicate
-       if (localModCount > 18 && Math.random() < 0.15) {
+       if (localModCount > 16 && Math.random() < 0.10) {
           const r = Math.random();
-          if (!localMinor) {
-              if (r < 0.8) localMinor = true;
-              else localCircle += (Math.random() < 0.9 ? 1 : -1);
+          if (totalSeconds <= 60) { }
+          else if (totalSeconds <= 300) { if (r < 0.2) localMinor = !localMinor; }
+          else if (totalSeconds <= 1800) {
+              if (r < 0.4) localMinor = !localMinor;
+              else localCircle += (Math.random() < 0.7 ? 1 : -1);
           } else {
-              if (r < 0.3) localMinor = false;
-              else localCircle += (Math.random() < 0.9 ? 1 : -1);
+              if (!localMinor) { if (r < 0.7) localMinor = true; else localCircle += (Math.random() < 0.9 ? 1 : -1); }
+              else { if (r < 0.3) localMinor = false; else localCircle += (Math.random() < 0.9 ? 1 : -1); }
           }
           localModCount = 0;
        }
@@ -409,8 +439,15 @@
        localIdx += shift;
        if (localIdx > 6) localIdx = 6; if (localIdx < -4) localIdx = -4;
 
-       const freq = getScaleNote(baseFreq, localIdx, localCircle, localMinor);
-       scheduleNote(offlineCtx, offlineMaster, freq, localTime, noteDur, 0.4, offlineReverbBuffer);
+       let freq = getScaleNote(baseFreq, localIdx, localCircle, localMinor);
+       let localDur = noteDur;
+
+       if (localIdx % 7 === 0 && Math.random() < 0.15) {
+           freq = freq * 0.25;
+           localDur = 25.0;
+       }
+
+       scheduleNote(offlineCtx, offlineMaster, freq, localTime, localDur, 0.4, offlineReverbBuffer);
        
        localModCount++;
        localTime += (1 / density);
@@ -422,7 +459,7 @@
     const a = document.createElement('a');
     a.style.display = 'none';
     a.href = url;
-    a.download = `open-shadow-v61-${Date.now()}.wav`;
+    a.download = `open-final-v65-${Date.now()}.wav`;
     document.body.appendChild(a);
     a.click();
     setTimeout(() => { document.body.removeChild(a); window.URL.revokeObjectURL(url); }, 100);
