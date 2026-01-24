@@ -1,5 +1,5 @@
 (() => {
-  const STATE_KEY = "open_player_final_v68";
+  const STATE_KEY = "open_player_final_v69";
 
   // =========================
   // UTILITIES & UI
@@ -155,27 +155,7 @@
     return baseFreq * Math.pow(2, noteValue / 12);
   }
 
-  function updateHarmonyState(durationInput, isHoming) {
-      if (isHoming) {
-          if (isMinor) {
-              if (Math.random() < 0.5) {
-                  isMinor = false;
-                  console.log("Homing: Surfaced to Major");
-                  return;
-              }
-          }
-          let normPos = circlePosition % 12;
-          if (normPos > 6) normPos -= 12;
-          if (normPos < -6) normPos += 12;
-          
-          if (normPos !== 0) {
-              const dir = normPos > 0 ? -1 : 1;
-              circlePosition += dir;
-              console.log(`Homing: Stepping Circle to ${circlePosition}`);
-          }
-          return;
-      }
-
+  function updateHarmonyState(durationInput) {
       const r = Math.random();
       let totalSeconds = (durationInput === "infinite") ? 99999 : parseFloat(durationInput);
 
@@ -200,6 +180,7 @@
           return;
       }
 
+      // Infinite
       if (durationInput === "infinite") {
           if (!isMinor) {
               if (r < 0.7) isMinor = true; 
@@ -228,7 +209,6 @@
   let nextTimeA = 0;
   let patternIdxA = 0; 
   let notesSinceModulation = 0;
-  let notesSinceHomingStep = 0;
   let sessionStartTime = 0, timerInterval = null;
 
   function ensureAudio() {
@@ -284,33 +264,20 @@
 
     while (nextTimeA < now + 0.5) {
       if (isApproachingEnd && !isEndingNaturally) {
-        const pos = circlePosition % 12;
-        const isHomeKey = (pos === 0);
+        // ENDING LOGIC (NO HOMING)
+        // Just look for the Root Note of whatever key we are currently in.
         const isRootNote = (patternIdxA % 7 === 0);
 
-        let allowEnd = false;
-        
-        if (durationInput === "infinite") {
-            if (isHomeKey && !isMinor && isRootNote) allowEnd = true;
-            if (!allowEnd) {
-                notesSinceHomingStep++;
-                if (notesSinceHomingStep >= 2) {
-                    updateHarmonyState(durationInput, true); 
-                    notesSinceHomingStep = 0;
-                }
-            }
-        } else {
-            if (isRootNote) allowEnd = true;
-        }
-
-        if (allowEnd) {
+        if (isRootNote) {
            const freq = getScaleNote(baseFreq, patternIdxA, circlePosition, isMinor);
+           // Final note gets Bass treatment
            scheduleNote(audioContext, masterGain, freq * 0.5, nextTimeA, 25.0, 0.5, liveReverbBuffer);
            beginNaturalEnd();
            return;
         }
       }
 
+      // MODULATION CHECK (Standard)
       if (!isApproachingEnd) {
           let modChance = 0.10; 
           const totalSecs = parseFloat(durationInput);
@@ -319,11 +286,12 @@
           }
 
           if (notesSinceModulation > 16 && Math.random() < modChance) {
-              updateHarmonyState(durationInput, false);
+              updateHarmonyState(durationInput);
               notesSinceModulation = 0;
           }
       }
 
+      // MELODY WALKER
       const r = Math.random();
       let shift = 0;
       if (r < 0.4) shift = 1;
@@ -336,9 +304,10 @@
 
       let freq = getScaleNote(baseFreq, patternIdxA, circlePosition, isMinor);
       
+      // BASS TOLL LOGIC
       if (patternIdxA % 7 === 0) {
           if (Math.random() < 0.15) {
-              freq = freq * 0.5; 
+              freq = freq * 0.5; // 1 Octave
               noteDur = 25.0; 
               console.log("Bass Toll");
           }
@@ -385,11 +354,8 @@
     const now = audioContext.currentTime;
     masterGain.gain.cancelScheduledValues(now);
     masterGain.gain.setValueAtTime(masterGain.gain.value, now);
-    
-    // FIX: Fade out extended to 20s to allow the final tail to breathe
     masterGain.gain.exponentialRampToValueAtTime(0.001, now + 20.0);
 
-    // Stop process after 20s
     setTimeout(() => {
       killImmediate();
       setButtonState("stopped");
@@ -408,7 +374,6 @@
     circlePosition = 0; 
     isMinor = false; 
     notesSinceModulation = 0;
-    notesSinceHomingStep = 0;
 
     isEndingNaturally = false; isApproachingEnd = false;
 
@@ -491,7 +456,7 @@
     const a = document.createElement('a');
     a.style.display = 'none';
     a.href = url;
-    a.download = `open-final-v68-${Date.now()}.wav`;
+    a.download = `open-final-v69-${Date.now()}.wav`;
     document.body.appendChild(a);
     a.click();
     setTimeout(() => { document.body.removeChild(a); window.URL.revokeObjectURL(url); }, 100);
