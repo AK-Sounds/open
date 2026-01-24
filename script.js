@@ -1,5 +1,5 @@
 (() => {
-  const STATE_KEY = "open_player_final_v66";
+  const STATE_KEY = "open_player_final_v68";
 
   // =========================
   // UTILITIES & UI
@@ -155,26 +155,15 @@
     return baseFreq * Math.pow(2, noteValue / 12);
   }
 
-  // UPDATE STATE (Includes Homing Logic)
   function updateHarmonyState(durationInput, isHoming) {
-      // HOMING LOGIC (For Natural End)
       if (isHoming) {
-          // We need to get circlePosition to 0 (or multiple of 12)
-          // and isMinor to false.
-          
           if (isMinor) {
-              // 50% chance to fix mode immediately
               if (Math.random() < 0.5) {
                   isMinor = false;
                   console.log("Homing: Surfaced to Major");
                   return;
               }
           }
-          
-          // Move Circle towards 0
-          // Calculate shortest distance on ring buffer
-          // e.g. if at 2, go -1. If at -2, go +1.
-          // Normalized pos -6 to 6
           let normPos = circlePosition % 12;
           if (normPos > 6) normPos -= 12;
           if (normPos < -6) normPos += 12;
@@ -187,7 +176,6 @@
           return;
       }
 
-      // STANDARD WANDERING LOGIC
       const r = Math.random();
       let totalSeconds = (durationInput === "infinite") ? 99999 : parseFloat(durationInput);
 
@@ -240,6 +228,7 @@
   let nextTimeA = 0;
   let patternIdxA = 0; 
   let notesSinceModulation = 0;
+  let notesSinceHomingStep = 0;
   let sessionStartTime = 0, timerInterval = null;
 
   function ensureAudio() {
@@ -302,39 +291,39 @@
         let allowEnd = false;
         
         if (durationInput === "infinite") {
-            // Infinite must return to C Major
             if (isHomeKey && !isMinor && isRootNote) allowEnd = true;
-            
-            // HOMING BEACON:
-            // If we are trying to end but not there, FORCE harmonic updates rapidly
-            // to walk back home. Check every single note.
             if (!allowEnd) {
-                updateHarmonyState(durationInput, true); 
+                notesSinceHomingStep++;
+                if (notesSinceHomingStep >= 2) {
+                    updateHarmonyState(durationInput, true); 
+                    notesSinceHomingStep = 0;
+                }
             }
         } else {
-            // Timed modes just need root note of current key
             if (isRootNote) allowEnd = true;
         }
 
         if (allowEnd) {
            const freq = getScaleNote(baseFreq, patternIdxA, circlePosition, isMinor);
-           // FIX 1: Bass Toll is 1 Octave down (0.5), not 2
            scheduleNote(audioContext, masterGain, freq * 0.5, nextTimeA, 25.0, 0.5, liveReverbBuffer);
            beginNaturalEnd();
            return;
         }
       }
 
-      // MODULATION CHECK (Standard)
-      // Only if not already homing
       if (!isApproachingEnd) {
-          if (notesSinceModulation > 16 && Math.random() < 0.10) {
+          let modChance = 0.10; 
+          const totalSecs = parseFloat(durationInput);
+          if (durationInput !== "infinite" && totalSecs > 300) {
+              modChance = 0.40; 
+          }
+
+          if (notesSinceModulation > 16 && Math.random() < modChance) {
               updateHarmonyState(durationInput, false);
               notesSinceModulation = 0;
           }
       }
 
-      // MELODY WALKER
       const r = Math.random();
       let shift = 0;
       if (r < 0.4) shift = 1;
@@ -342,17 +331,14 @@
       else shift = (Math.random() < 0.5 ? 2 : -2);
       
       patternIdxA += shift;
-      
-      // FIX 2: Widen Range (+/- 10) to allow octave transpositions
       if (patternIdxA > 10) patternIdxA = 10;
       if (patternIdxA < -8) patternIdxA = -8;
 
       let freq = getScaleNote(baseFreq, patternIdxA, circlePosition, isMinor);
       
-      // BASS TOLL LOGIC
       if (patternIdxA % 7 === 0) {
           if (Math.random() < 0.15) {
-              freq = freq * 0.5; // FIX 1: 1 Octave Drop
+              freq = freq * 0.5; 
               noteDur = 25.0; 
               console.log("Bass Toll");
           }
@@ -399,12 +385,15 @@
     const now = audioContext.currentTime;
     masterGain.gain.cancelScheduledValues(now);
     masterGain.gain.setValueAtTime(masterGain.gain.value, now);
-    masterGain.gain.exponentialRampToValueAtTime(0.001, now + 8.0);
+    
+    // FIX: Fade out extended to 20s to allow the final tail to breathe
+    masterGain.gain.exponentialRampToValueAtTime(0.001, now + 20.0);
 
+    // Stop process after 20s
     setTimeout(() => {
       killImmediate();
       setButtonState("stopped");
-    }, 8100);
+    }, 20100);
   }
 
   async function startFromUI() {
@@ -419,6 +408,7 @@
     circlePosition = 0; 
     isMinor = false; 
     notesSinceModulation = 0;
+    notesSinceHomingStep = 0;
 
     isEndingNaturally = false; isApproachingEnd = false;
 
@@ -459,7 +449,9 @@
     let totalSeconds = (durationInput === "infinite") ? 99999 : parseFloat(durationInput);
 
     while (localTime < 60) {
-       if (localModCount > 16 && Math.random() < 0.10) {
+       let modChance = (durationInput !== "infinite" && totalSeconds > 300) ? 0.40 : 0.10;
+
+       if (localModCount > 16 && Math.random() < modChance) {
           const r = Math.random();
           if (totalSeconds <= 60) { }
           else if (totalSeconds <= 300) { if (r < 0.2) localMinor = !localMinor; }
@@ -467,6 +459,7 @@
               if (r < 0.4) localMinor = !localMinor;
               else localCircle += (Math.random() < 0.7 ? 1 : -1);
           } else {
+              // Infinite
               if (!localMinor) { if (r < 0.7) localMinor = true; else localCircle += (Math.random() < 0.9 ? 1 : -1); }
               else { if (r < 0.3) localMinor = false; else localCircle += (Math.random() < 0.9 ? 1 : -1); }
           }
@@ -498,7 +491,7 @@
     const a = document.createElement('a');
     a.style.display = 'none';
     a.href = url;
-    a.download = `open-final-v66-${Date.now()}.wav`;
+    a.download = `open-final-v68-${Date.now()}.wav`;
     document.body.appendChild(a);
     a.click();
     setTimeout(() => { document.body.removeChild(a); window.URL.revokeObjectURL(url); }, 100);
