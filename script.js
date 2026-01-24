@@ -1,5 +1,5 @@
 (() => {
-  const STATE_KEY = "open_player_final_v65";
+  const STATE_KEY = "open_player_final_v66";
 
   // =========================
   // UTILITIES & UI
@@ -155,14 +155,45 @@
     return baseFreq * Math.pow(2, noteValue / 12);
   }
 
-  // UPDATED HARMONY LOGIC (70/30 Split)
-  function updateHarmonyState(durationInput) {
+  // UPDATE STATE (Includes Homing Logic)
+  function updateHarmonyState(durationInput, isHoming) {
+      // HOMING LOGIC (For Natural End)
+      if (isHoming) {
+          // We need to get circlePosition to 0 (or multiple of 12)
+          // and isMinor to false.
+          
+          if (isMinor) {
+              // 50% chance to fix mode immediately
+              if (Math.random() < 0.5) {
+                  isMinor = false;
+                  console.log("Homing: Surfaced to Major");
+                  return;
+              }
+          }
+          
+          // Move Circle towards 0
+          // Calculate shortest distance on ring buffer
+          // e.g. if at 2, go -1. If at -2, go +1.
+          // Normalized pos -6 to 6
+          let normPos = circlePosition % 12;
+          if (normPos > 6) normPos -= 12;
+          if (normPos < -6) normPos += 12;
+          
+          if (normPos !== 0) {
+              const dir = normPos > 0 ? -1 : 1;
+              circlePosition += dir;
+              console.log(`Homing: Stepping Circle to ${circlePosition}`);
+          }
+          return;
+      }
+
+      // STANDARD WANDERING LOGIC
       const r = Math.random();
       let totalSeconds = (durationInput === "infinite") ? 99999 : parseFloat(durationInput);
 
-      if (totalSeconds <= 60) return; // 1 Min: Locked
+      if (totalSeconds <= 60) return; 
 
-      if (totalSeconds <= 300) { // 5 Mins: Pivot Only
+      if (totalSeconds <= 300) { 
           if (r < 0.2) { 
               isMinor = !isMinor;
               console.log(`Modulating (5m): ${isMinor ? 'Relative Minor' : 'Relative Major'}`);
@@ -170,7 +201,7 @@
           return;
       }
 
-      if (totalSeconds <= 1800) { // 10-30 Mins: Journey
+      if (totalSeconds <= 1800) { 
           if (r < 0.4) {
               isMinor = !isMinor; 
           } else {
@@ -181,14 +212,11 @@
           return;
       }
 
-      // INFINITE: The Shadow Walker (70/30 Split)
       if (durationInput === "infinite") {
           if (!isMinor) {
-              // If Major -> 70% chance to sink to Minor
               if (r < 0.7) isMinor = true; 
               else circlePosition += (Math.random() < 0.9 ? 1 : -1);
           } else {
-              // If Minor -> 30% chance to rise to Major
               if (r < 0.3) isMinor = false; 
               else circlePosition += (Math.random() < 0.9 ? 1 : -1);
           }
@@ -274,24 +302,36 @@
         let allowEnd = false;
         
         if (durationInput === "infinite") {
+            // Infinite must return to C Major
             if (isHomeKey && !isMinor && isRootNote) allowEnd = true;
+            
+            // HOMING BEACON:
+            // If we are trying to end but not there, FORCE harmonic updates rapidly
+            // to walk back home. Check every single note.
+            if (!allowEnd) {
+                updateHarmonyState(durationInput, true); 
+            }
         } else {
+            // Timed modes just need root note of current key
             if (isRootNote) allowEnd = true;
         }
 
         if (allowEnd) {
            const freq = getScaleNote(baseFreq, patternIdxA, circlePosition, isMinor);
-           // Final note gets Bass treatment for closure
-           scheduleNote(audioContext, masterGain, freq * 0.25, nextTimeA, 25.0, 0.5, liveReverbBuffer);
+           // FIX 1: Bass Toll is 1 Octave down (0.5), not 2
+           scheduleNote(audioContext, masterGain, freq * 0.5, nextTimeA, 25.0, 0.5, liveReverbBuffer);
            beginNaturalEnd();
            return;
         }
       }
 
-      // UPDATED PACING: 16 notes (~2 mins), 10% chance
-      if (notesSinceModulation > 16 && Math.random() < 0.10) {
-          updateHarmonyState(durationInput);
-          notesSinceModulation = 0;
+      // MODULATION CHECK (Standard)
+      // Only if not already homing
+      if (!isApproachingEnd) {
+          if (notesSinceModulation > 16 && Math.random() < 0.10) {
+              updateHarmonyState(durationInput, false);
+              notesSinceModulation = 0;
+          }
       }
 
       // MELODY WALKER
@@ -302,18 +342,18 @@
       else shift = (Math.random() < 0.5 ? 2 : -2);
       
       patternIdxA += shift;
-      if (patternIdxA > 6) patternIdxA = 6;
-      if (patternIdxA < -4) patternIdxA = -4;
+      
+      // FIX 2: Widen Range (+/- 10) to allow octave transpositions
+      if (patternIdxA > 10) patternIdxA = 10;
+      if (patternIdxA < -8) patternIdxA = -8;
 
       let freq = getScaleNote(baseFreq, patternIdxA, circlePosition, isMinor);
       
       // BASS TOLL LOGIC
-      // Check if current note index is a multiple of 7 (Root Note)
       if (patternIdxA % 7 === 0) {
-          // 15% Chance to drop 2 octaves (Bass Toll)
           if (Math.random() < 0.15) {
-              freq = freq * 0.25; // Drop 2 octaves
-              noteDur = 25.0; // Extend duration for weight
+              freq = freq * 0.5; // FIX 1: 1 Octave Drop
+              noteDur = 25.0; 
               console.log("Bass Toll");
           }
       }
@@ -409,7 +449,7 @@
     const elapsed = now - sessionStartTime;
     const baseFreq = parseFloat(document.getElementById("tone")?.value ?? "110");
     const density = getDynamicDensity(elapsed);
-    let noteDur = (1 / density) * 2.5;
+    const noteDur = (1 / density) * 2.5;
 
     let localCircle = circlePosition;
     let localMinor = isMinor;
@@ -437,18 +477,17 @@
        let shift = 0;
        if (r < 0.4) shift = 1; else if (r < 0.8) shift = -1; else shift = (Math.random() < 0.5 ? 2 : -2);
        localIdx += shift;
-       if (localIdx > 6) localIdx = 6; if (localIdx < -4) localIdx = -4;
+       if (localIdx > 10) localIdx = 10; if (localIdx < -8) localIdx = -8;
 
        let freq = getScaleNote(baseFreq, localIdx, localCircle, localMinor);
        let localDur = noteDur;
 
        if (localIdx % 7 === 0 && Math.random() < 0.15) {
-           freq = freq * 0.25;
+           freq = freq * 0.5;
            localDur = 25.0;
        }
 
        scheduleNote(offlineCtx, offlineMaster, freq, localTime, localDur, 0.4, offlineReverbBuffer);
-       
        localModCount++;
        localTime += (1 / density);
     }
@@ -459,7 +498,7 @@
     const a = document.createElement('a');
     a.style.display = 'none';
     a.href = url;
-    a.download = `open-final-v65-${Date.now()}.wav`;
+    a.download = `open-final-v66-${Date.now()}.wav`;
     document.body.appendChild(a);
     a.click();
     setTimeout(() => { document.body.removeChild(a); window.URL.revokeObjectURL(url); }, 100);
