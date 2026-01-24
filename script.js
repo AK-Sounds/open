@@ -1,5 +1,5 @@
 (() => {
-  const STATE_KEY = "open_player_final_v57";
+  const STATE_KEY = "open_player_final_v61";
 
   // =========================
   // UTILITIES & UI
@@ -61,11 +61,8 @@
   }
 
   // =========================
-  // SHARED AUDIO LOGIC
+  // AUDIO ENGINE (v27 Exact)
   // =========================
-  const scales = { major: [0, 2, 4, 5, 7, 9, 11] }; 
-  let runMood = "major";
-
   function createReverbBuffer(ctx) {
     const duration = 5.0, decay = 1.5, rate = ctx.sampleRate, length = Math.floor(rate * duration);
     const impulse = ctx.createBuffer(2, length, rate);
@@ -76,35 +73,10 @@
     return impulse;
   }
 
-  const motifA = [0, 4, 0, 6]; 
-  const motifB = [0, 2, 4, 6, 8]; 
-
-  function getNextPatternNote(baseFreq, patternIndex, patternArray, minOct, maxOct, harmonicRootIndex) {
-    const scale = scales[runMood];
-    const len = scale.length;
-    const noteOffset = patternArray[patternIndex % patternArray.length];
-    let rawIndex = harmonicRootIndex + noteOffset + 3; 
-
-    const absoluteMin = minOct * len;
-    const absoluteMax = (maxOct + 1) * len - 1;
-    if (rawIndex < absoluteMin) rawIndex = absoluteMin;
-    if (rawIndex > absoluteMax) rawIndex = absoluteMax;
-
-    const octave = Math.floor(rawIndex / len);
-    const noteDegree = ((rawIndex % len) + len) % len;
-    const interval = scale[noteDegree];
+  function scheduleNote(ctx, destination, freq, time, duration, volume, reverbBuffer) {
+    const numVoices = 2 + Math.floor(Math.random() * 2);
+    let totalAmp = 0;
     
-    return { 
-        freq: baseFreq * Math.pow(2, (interval / 12) + octave),
-        newPatternIndex: patternIndex + 1
-    };
-  }
-
-  // ==========================================
-  // DUAL-TEXTURE ENGINE (Bell vs Bow)
-  // ==========================================
-  function scheduleNote(ctx, destination, freq, time, duration, volume, reverbBuffer, type) {
-    // 1. Reverb (Shared)
     const conv = ctx.createConvolver();
     conv.buffer = reverbBuffer;
     const revGain = ctx.createGain();
@@ -112,23 +84,12 @@
     conv.connect(revGain);
     revGain.connect(destination);
 
-    // 2. Voice Config based on Type
-    let numVoices = 2;
-    if (type === 'bell') numVoices = 2 + Math.floor(Math.random() * 2);
-    else numVoices = 2; // Bow is simpler, cleaner
-
-    let totalAmp = 0;
     const voices = Array.from({length: numVoices}, () => {
-      let v;
-      if (type === 'bell') {
-          // BELL: Complex FM, Metallic
-          v = { modRatio: 1.5 + Math.random() * 2.5, modIndex: 1 + Math.random() * 4, amp: Math.random() };
-      } else {
-          // BOW: Pure Sine, minimal FM (Just thickening)
-          // Ratio 1.0 = Unison (No clang)
-          // Index 0.5 = Very subtle warmth
-          v = { modRatio: 1.0 + (Math.random() * 0.01), modIndex: 0.5, amp: Math.random() };
-      }
+      const v = { 
+          modRatio: 1.5 + Math.random() * 2.5, 
+          modIndex: 1 + Math.random() * 4, 
+          amp: Math.random() 
+      };
       totalAmp += v.amp;
       return v;
     });
@@ -148,18 +109,8 @@
       modGain.gain.setValueAtTime(freq * voice.modIndex, time);
       modGain.gain.exponentialRampToValueAtTime(freq * 0.5, time + duration);
 
-      // ENVELOPE LOGIC
       ampGain.gain.setValueAtTime(0.0001, time);
-      
-      if (type === 'bell') {
-          // BELL: Fast Attack (Click)
-          ampGain.gain.exponentialRampToValueAtTime((voice.amp / totalAmp) * volume, time + 0.01);
-      } else {
-          // BOW: Slow Swell (1.5s Attack)
-          // We target a slightly lower volume for the bow so it sits *behind* the bell
-          ampGain.gain.linearRampToValueAtTime((voice.amp / totalAmp) * (volume * 0.7), time + 1.5);
-      }
-      
+      ampGain.gain.exponentialRampToValueAtTime((voice.amp / totalAmp) * volume, time + 0.01);
       ampGain.gain.exponentialRampToValueAtTime(0.0001, time + duration);
 
       modulator.connect(modGain); 
@@ -174,67 +125,84 @@
     });
   }
 
-  // =========================
-  // LOGIC & SCHEDULING
-  // =========================
-  function calculateProgress(elapsed, durationInput) {
-    let totalDuration = parseFloat(durationInput);
-    if (durationInput === "infinite") {
-      totalDuration = 3600;
-      const doubleCycle = totalDuration * 2;
-      const p = (elapsed % doubleCycle) / totalDuration;
-      return (p <= 1.0) ? p : (2.0 - p);
-    } else {
-      return Math.min(1.0, elapsed / totalDuration);
-    }
-  }
+  // ==========================================
+  // THE SHADOW WALKER (Minor-Biased Logic)
+  // ==========================================
+  
+  let circlePosition = 0; 
+  let isMinor = false; 
 
-  function getHarmonicRoot(progress, durationInput) {
-    let totalSeconds = parseFloat(durationInput);
-    if (durationInput === "infinite") totalSeconds = 3600;
+  function getScaleNote(baseFreq, scaleIndex, circlePos, minorMode) {
+    let pos = circlePos % 12;
+    if (pos < 0) pos += 12;
 
-    let sequence = [];
-    if (totalSeconds <= 120) {
-      sequence = [ { t: 0.5, chord: 0 }, { t: 0.8, chord: 4 }, { t: 1.0, chord: 1 } ];
-    } else if (totalSeconds <= 600) {
-      sequence = [ { t: 0.3, chord: 0 }, { t: 0.6, chord: 5 }, { t: 0.85, chord: 4 }, { t: 1.0, chord: 1 } ];
-    } else {
-      sequence = [ { t: 0.20, chord: 0 }, { t: 0.40, chord: 2 }, { t: 0.60, chord: 5 }, { t: 0.75, chord: 4 }, { t: 0.90, chord: 0 }, { t: 1.00, chord: 1 } ];
-    }
-    for (let i = 0; i < sequence.length; i++) {
-      if (progress < sequence[i].t) return sequence[i].chord;
-    }
-    return sequence[sequence.length - 1].chord;
-  }
-
-  function getArcState(progress, durationInput) {
-    const rootIndex = getHarmonicRoot(progress, durationInput);
+    let semitones = (pos * 7) % 12;
+    let rootOffset = semitones;
     
-    // MICRO-PHASING (Still State)
-    let ratio, minOctA, maxOctA, minOctB, maxOctB;
-
-    if (progress < 0.2) {
-      ratio = 1.0; 
-      minOctA = 0; maxOctA = 1; minOctB = 0; maxOctB = 1;
-    } else if (progress < 0.5) {
-      const p = (progress - 0.2) / 0.3;
-      ratio = 1.0 + (p * 0.002); 
-      minOctA = 0; maxOctA = 1; minOctB = 0; maxOctB = 1;
-    } else if (progress < 0.8) {
-      ratio = 1.002; 
-      minOctA = 0; maxOctA = 1; minOctB = 0; maxOctB = 1;
-    } else {
-      ratio = 1.0; 
-      minOctA = 0; maxOctA = 1; minOctB = 0; maxOctB = 1;
+    // Relative Minor shift
+    if (minorMode) {
+        rootOffset = (semitones + 9) % 12; 
     }
-    return { ratio, minOctA, maxOctA, minOctB, maxOctB, rootIndex };
+
+    const intervals = minorMode 
+        ? [0, 2, 3, 5, 7, 8, 10] // Natural Minor
+        : [0, 2, 4, 5, 7, 9, 11]; // Major
+
+    const len = intervals.length;
+    const octave = Math.floor(scaleIndex / len);
+    const degree = ((scaleIndex % len) + len) % len;
+    
+    const noteValue = rootOffset + intervals[degree] + (octave * 12);
+    return baseFreq * Math.pow(2, noteValue / 12);
   }
 
+  // MINOR GRAVITY LOGIC
+  function updateHarmonyState() {
+      const r = Math.random();
+      
+      if (!isMinor) {
+          // WE ARE MAJOR (Unstable)
+          // 80% Chance -> Sink into Relative Minor
+          // 20% Chance -> Move Circle (Stay Major)
+          if (r < 0.8) {
+              isMinor = true;
+              console.log(`Modulating: Sinking to Relative Minor`);
+          } else {
+              const dir = Math.random() < 0.9 ? 1 : -1;
+              circlePosition += dir;
+              console.log(`Modulating: Circle Step (Major)`);
+          }
+      } else {
+          // WE ARE MINOR (Stable)
+          // 30% Chance -> Surface to Relative Major
+          // 70% Chance -> Move Circle (Stay Minor)
+          if (r < 0.3) {
+              isMinor = false;
+              console.log(`Modulating: Surfacing to Relative Major`);
+          } else {
+              const dir = Math.random() < 0.9 ? 1 : -1;
+              circlePosition += dir;
+              console.log(`Modulating: Circle Step (Minor)`);
+          }
+      }
+  }
+
+  function getDynamicDensity(elapsed) {
+      const period = 60; 
+      const sine = Math.sin((elapsed / period) * 2 * Math.PI);
+      const normalized = (sine + 1) / 2; 
+      return 0.08 + (normalized * 0.12);
+  }
+
+  // =========================
+  // SCHEDULER
+  // =========================
   let audioContext = null, masterGain = null, streamDest = null;
   let liveReverbBuffer = null;
   let isPlaying = false, isEndingNaturally = false, isApproachingEnd = false;
-  let nextTimeA = 0, nextTimeB = 0;
-  let patternIdxA = 0, patternIdxB = 0;
+  let nextTimeA = 0;
+  let patternIdxA = 0; 
+  let notesSinceModulation = 0;
   let sessionStartTime = 0, timerInterval = null;
 
   function ensureAudio() {
@@ -284,44 +252,49 @@
       if (elapsed >= targetDuration) isApproachingEnd = true;
     }
 
-    const progress = calculateProgress(elapsed, durationInput);
-    const arc = getArcState(progress, durationInput);
     const baseFreq = parseFloat(document.getElementById("tone")?.value ?? "110");
+    const density = getDynamicDensity(elapsed);
+    const noteDur = (1 / density) * 2.5;
 
-    const densityA = 0.14; 
-    const noteDur = (1 / densityA) * 2.5;
-
-    // ANCHOR LOOP (The Bell)
     while (nextTimeA < now + 0.5) {
       if (isApproachingEnd && !isEndingNaturally) {
-        const isStartOfPattern = (patternIdxA % motifA.length === 0);
-        if (isStartOfPattern) {
-          const result = getNextPatternNote(baseFreq, patternIdxA, motifA, arc.minOctA, arc.maxOctA, arc.rootIndex);
-          scheduleNote(audioContext, masterGain, result.freq, nextTimeA, 25.0, 0.4, liveReverbBuffer, 'bell');
-          beginNaturalEnd();
-          return;
+        // End condition: C Major (Home) + Root Note
+        const pos = circlePosition % 12;
+        const isHomeKey = (pos === 0) && (!isMinor);
+        const isRootNote = (patternIdxA % 7 === 0);
+
+        if (isHomeKey && isRootNote) {
+           const freq = getScaleNote(baseFreq, patternIdxA, circlePosition, isMinor);
+           scheduleNote(audioContext, masterGain, freq, nextTimeA, 25.0, 0.4, liveReverbBuffer);
+           beginNaturalEnd();
+           return;
         }
       }
 
-      const result = getNextPatternNote(baseFreq, patternIdxA, motifA, arc.minOctA, arc.maxOctA, arc.rootIndex);
-      patternIdxA = result.newPatternIndex;
-      
-      scheduleNote(audioContext, masterGain, result.freq, nextTimeA, noteDur, 0.4, liveReverbBuffer, 'bell');
-      nextTimeA += (1 / densityA);
-    }
+      // SLOWER PACING:
+      // Wait for 18 notes (instead of 10) before considering a change
+      // Low probability (15%) per check
+      if (notesSinceModulation > 18 && Math.random() < 0.15) {
+          updateHarmonyState();
+          notesSinceModulation = 0;
+      }
 
-    // SATELLITE LOOP (The Bowed Glass)
-    while (nextTimeB < now + 0.5 && !isEndingNaturally) {
-      // No collision detection needed because the envelopes are different (Attack vs Swell)
-      // They don't fight for the transient.
-
-      const result = getNextPatternNote(baseFreq, patternIdxB, motifB, arc.minOctB, arc.maxOctB, arc.rootIndex);
-      patternIdxB = result.newPatternIndex;
-      const densityB = densityA * arc.ratio;
-      const noteDurB = (1 / densityB) * 2.5;
+      const r = Math.random();
+      let shift = 0;
+      if (r < 0.4) shift = 1;
+      else if (r < 0.8) shift = -1;
+      else shift = (Math.random() < 0.5 ? 2 : -2);
       
-      scheduleNote(audioContext, masterGain, result.freq, nextTimeB, noteDurB, 0.4, liveReverbBuffer, 'bow');
-      nextTimeB += (1 / densityB);
+      patternIdxA += shift;
+      if (patternIdxA > 6) patternIdxA = 6;
+      if (patternIdxA < -4) patternIdxA = -4;
+
+      const freq = getScaleNote(baseFreq, patternIdxA, circlePosition, isMinor);
+      
+      scheduleNote(audioContext, masterGain, freq, nextTimeA, noteDur, 0.4, liveReverbBuffer);
+      
+      notesSinceModulation++;
+      nextTimeA += (1 / density);
     }
   }
 
@@ -374,8 +347,12 @@
     masterGain.gain.cancelScheduledValues(audioContext.currentTime);
     masterGain.gain.setValueAtTime(1, audioContext.currentTime);
 
-    nextTimeA = audioContext.currentTime; nextTimeB = audioContext.currentTime;
-    patternIdxA = 0; patternIdxB = 0;
+    nextTimeA = audioContext.currentTime;
+    patternIdxA = 0; 
+    circlePosition = 0; 
+    isMinor = false; 
+    notesSinceModulation = 0;
+
     isEndingNaturally = false; isApproachingEnd = false;
 
     killImmediate();
@@ -400,32 +377,43 @@
     offlineMaster.connect(offlineCtx.destination);
     const offlineReverbBuffer = createReverbBuffer(offlineCtx);
 
-    const durationInput = document.getElementById("songDuration")?.value ?? "60";
     const now = audioContext.currentTime;
     const elapsed = now - sessionStartTime;
-    const currentProgress = calculateProgress(elapsed, durationInput);
-    const arc = getArcState(currentProgress, durationInput);
     const baseFreq = parseFloat(document.getElementById("tone")?.value ?? "110");
-    const densityA = 0.14;
-    const noteDur = (1 / densityA) * 2.5;
+    const density = getDynamicDensity(elapsed);
+    const noteDur = (1 / density) * 2.5;
 
-    let timeA = 0; let idxA = patternIdxA;
-    while (timeA < 60) {
-      const result = getNextPatternNote(baseFreq, idxA, motifA, arc.minOctA, arc.maxOctA, arc.rootIndex);
-      idxA = result.newPatternIndex;
-      scheduleNote(offlineCtx, offlineMaster, result.freq, timeA, noteDur, 0.4, offlineReverbBuffer, 'bell');
-      timeA += (1 / densityA);
-    }
+    let localCircle = circlePosition;
+    let localMinor = isMinor;
+    let localIdx = patternIdxA;
+    let localTime = 0;
+    let localModCount = 0;
 
-    let timeB = 0; let idxB = patternIdxB;
-    const densityB = densityA * arc.ratio;
-    const noteDurB = (1 / densityB) * 2.5;
-    
-    while (timeB < 60) {
-      const result = getNextPatternNote(baseFreq, idxB, motifB, arc.minOctB, arc.maxOctB, arc.rootIndex);
-      idxB = result.newPatternIndex;
-      scheduleNote(offlineCtx, offlineMaster, result.freq, timeB, noteDurB, 0.4, offlineReverbBuffer, 'bow');
-      timeB += (1 / densityB);
+    while (localTime < 60) {
+       // Offline logic duplicate
+       if (localModCount > 18 && Math.random() < 0.15) {
+          const r = Math.random();
+          if (!localMinor) {
+              if (r < 0.8) localMinor = true;
+              else localCircle += (Math.random() < 0.9 ? 1 : -1);
+          } else {
+              if (r < 0.3) localMinor = false;
+              else localCircle += (Math.random() < 0.9 ? 1 : -1);
+          }
+          localModCount = 0;
+       }
+
+       const r = Math.random();
+       let shift = 0;
+       if (r < 0.4) shift = 1; else if (r < 0.8) shift = -1; else shift = (Math.random() < 0.5 ? 2 : -2);
+       localIdx += shift;
+       if (localIdx > 6) localIdx = 6; if (localIdx < -4) localIdx = -4;
+
+       const freq = getScaleNote(baseFreq, localIdx, localCircle, localMinor);
+       scheduleNote(offlineCtx, offlineMaster, freq, localTime, noteDur, 0.4, offlineReverbBuffer);
+       
+       localModCount++;
+       localTime += (1 / density);
     }
 
     const renderedBuffer = await offlineCtx.startRendering();
@@ -434,7 +422,7 @@
     const a = document.createElement('a');
     a.style.display = 'none';
     a.href = url;
-    a.download = `open-final-v57-${Math.floor(currentProgress * 100)}percent-${Date.now()}.wav`;
+    a.download = `open-shadow-v61-${Date.now()}.wav`;
     document.body.appendChild(a);
     a.click();
     setTimeout(() => { document.body.removeChild(a); window.URL.revokeObjectURL(url); }, 100);
