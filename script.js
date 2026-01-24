@@ -1,5 +1,5 @@
 (() => {
-  const STATE_KEY = "open_player_final_v51";
+  const STATE_KEY = "open_player_final_v54";
 
   // =========================
   // UTILITIES & UI
@@ -66,7 +66,8 @@
   const scales = { major: [0, 2, 4, 5, 7, 9, 11] }; 
   let runMood = "major";
 
-  // EXACT REVERB TRANSPLANT FROM v27
+  // v27 EXACT REVERB SETTINGS
+  // Duration: 5.0s | Decay: 1.5
   function createReverbBuffer(ctx) {
     const duration = 5.0, decay = 1.5, rate = ctx.sampleRate, length = Math.floor(rate * duration);
     const impulse = ctx.createBuffer(2, length, rate);
@@ -101,23 +102,23 @@
     };
   }
 
-  // ==========================================
-  // EXACT SOUND ENGINE TRANSPLANT (v27)
-  // ==========================================
+  // v27 EXACT SOUND ENGINE
   function scheduleNote(ctx, destination, freq, time, duration, volume, reverbBuffer) {
-    // 1. Voice Count: 2 to 3 voices (Randomized)
+    // 1. Voice Count: 2 to 3
     const numVoices = 2 + Math.floor(Math.random() * 2);
     let totalAmp = 0;
     
-    // 2. Reverb Setup: Exact Gain (1.5)
+    // 2. Reverb Routing: Parallel Wet/Dry
     const conv = ctx.createConvolver();
     conv.buffer = reverbBuffer;
     const revGain = ctx.createGain();
+    
+    // v27 EXACT GAIN: 1.5
     revGain.gain.value = 1.5; 
+    
     conv.connect(revGain);
     revGain.connect(destination);
 
-    // 3. Voice Logic
     const voices = Array.from({length: numVoices}, () => {
       const v = { 
           modRatio: 1.5 + Math.random() * 2.5, 
@@ -143,8 +144,9 @@
       modGain.gain.setValueAtTime(freq * voice.modIndex, time);
       modGain.gain.exponentialRampToValueAtTime(freq * 0.5, time + duration);
 
+      // v27 EXACT ENVELOPE
+      // Fast Attack: 0.01s (This creates the "click/ping" transient)
       ampGain.gain.setValueAtTime(0.0001, time);
-      // Fast attack (10ms) -> Exponential Decay
       ampGain.gain.exponentialRampToValueAtTime((voice.amp / totalAmp) * volume, time + 0.01);
       ampGain.gain.exponentialRampToValueAtTime(0.0001, time + duration);
 
@@ -152,6 +154,8 @@
       modGain.connect(carrier.frequency);
       
       carrier.connect(ampGain); 
+      
+      // PARALLEL OUTPUT
       ampGain.connect(conv); // Wet
       ampGain.connect(destination); // Dry
 
@@ -195,9 +199,6 @@
 
   function getArcState(progress, durationInput) {
     const rootIndex = getHarmonicRoot(progress, durationInput);
-    
-    // We strictly follow Pendulum Physics for timing only.
-    // The "Sound" is now fully handled by scheduleNote's internal math.
     let ratio, minOctA, maxOctA, minOctB, maxOctB;
 
     if (progress < 0.2) {
@@ -220,7 +221,6 @@
     return { ratio, minOctA, maxOctA, minOctB, maxOctB, rootIndex };
   }
 
-  // REALTIME SCHEDULER
   let audioContext = null, masterGain = null, streamDest = null;
   let liveReverbBuffer = null;
   let isPlaying = false, isEndingNaturally = false, isApproachingEnd = false;
@@ -279,7 +279,13 @@
     const arc = getArcState(progress, durationInput);
     const baseFreq = parseFloat(document.getElementById("tone")?.value ?? "110");
 
-    const densityA = 0.14; // Spaciousness
+    const densityA = 0.14; 
+    
+    // v27 CALCULATED OVERLAP
+    // v27 Logic: Duration = (1/density) * 2.5
+    // Tower Logic: Gap = 1/densityA (~7.14s)
+    // Resulting Duration = 7.14 * 2.5 = 17.85s
+    const noteDur = (1 / densityA) * 2.5;
 
     // ANCHOR LOOP
     while (nextTimeA < now + 0.5) {
@@ -289,8 +295,7 @@
 
         if (isStartOfPattern && isPhysicallyLocked) {
           const result = getNextPatternNote(baseFreq, patternIdxA, motifA, arc.minOctA, arc.maxOctA, arc.rootIndex);
-          // Long tail for ending (10.0s)
-          scheduleNote(audioContext, masterGain, result.freq, nextTimeA, 10.0, 0.4, liveReverbBuffer);
+          scheduleNote(audioContext, masterGain, result.freq, nextTimeA, 20.0, 0.4, liveReverbBuffer);
           beginNaturalEnd();
           return;
         }
@@ -298,8 +303,8 @@
 
       const result = getNextPatternNote(baseFreq, patternIdxA, motifA, arc.minOctA, arc.maxOctA, arc.rootIndex);
       patternIdxA = result.newPatternIndex;
-      // Increased to 8.0s to match the long sustain of your old script
-      scheduleNote(audioContext, masterGain, result.freq, nextTimeA, 8.0, 0.4, liveReverbBuffer);
+      
+      scheduleNote(audioContext, masterGain, result.freq, nextTimeA, noteDur, 0.4, liveReverbBuffer);
       nextTimeA += (1 / densityA);
     }
 
@@ -308,9 +313,74 @@
       const result = getNextPatternNote(baseFreq, patternIdxB, motifB, arc.minOctB, arc.maxOctB, arc.rootIndex);
       patternIdxB = result.newPatternIndex;
       const densityB = densityA * arc.ratio;
-      scheduleNote(audioContext, masterGain, result.freq, nextTimeB, 8.0, 0.4, liveReverbBuffer);
+      
+      // Satellite also scales duration to its own density
+      const noteDurB = (1 / densityB) * 2.5;
+      
+      scheduleNote(audioContext, masterGain, result.freq, nextTimeB, noteDurB, 0.4, liveReverbBuffer);
       nextTimeB += (1 / densityB);
     }
+  }
+
+  function killImmediate() {
+    if (timerInterval) clearInterval(timerInterval);
+    if (masterGain) { 
+        masterGain.gain.cancelScheduledValues(audioContext.currentTime); 
+        masterGain.gain.setValueAtTime(1, audioContext.currentTime); 
+    }
+    isPlaying = false;
+  }
+
+  function stopAllManual() {
+    setButtonState("stopped");
+    if (!audioContext) { isPlaying = false; return; }
+
+    isPlaying = false;
+    isEndingNaturally = false;
+
+    if (timerInterval) clearInterval(timerInterval);
+
+    const now = audioContext.currentTime;
+    masterGain.gain.cancelScheduledValues(now);
+    masterGain.gain.setValueAtTime(masterGain.gain.value, now);
+    masterGain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+
+    setTimeout(killImmediate, 120);
+  }
+
+  function beginNaturalEnd() {
+    if (isEndingNaturally) return;
+    isEndingNaturally = true; isPlaying = false;
+    if (timerInterval) clearInterval(timerInterval);
+    
+    const now = audioContext.currentTime;
+    masterGain.gain.cancelScheduledValues(now);
+    masterGain.gain.setValueAtTime(masterGain.gain.value, now);
+    masterGain.gain.exponentialRampToValueAtTime(0.001, now + 8.0);
+
+    setTimeout(() => {
+      killImmediate();
+      setButtonState("stopped");
+    }, 8100);
+  }
+
+  async function startFromUI() {
+    ensureAudio();
+    if (audioContext.state === "suspended") await audioContext.resume();
+
+    masterGain.gain.cancelScheduledValues(audioContext.currentTime);
+    masterGain.gain.setValueAtTime(1, audioContext.currentTime);
+
+    nextTimeA = audioContext.currentTime; nextTimeB = audioContext.currentTime;
+    patternIdxA = 0; patternIdxB = 0;
+    isEndingNaturally = false; isApproachingEnd = false;
+
+    killImmediate();
+    isPlaying = true;
+    setButtonState("playing");
+    sessionStartTime = audioContext.currentTime;
+
+    timerInterval = setInterval(scheduler, 100);
   }
 
   // =========================
@@ -334,21 +404,24 @@
     const arc = getArcState(currentProgress, durationInput);
     const baseFreq = parseFloat(document.getElementById("tone")?.value ?? "110");
     const densityA = 0.14;
+    const noteDur = (1 / densityA) * 2.5;
 
     let timeA = 0; let idxA = patternIdxA;
     while (timeA < 60) {
       const result = getNextPatternNote(baseFreq, idxA, motifA, arc.minOctA, arc.maxOctA, arc.rootIndex);
       idxA = result.newPatternIndex;
-      scheduleNote(offlineCtx, offlineMaster, result.freq, timeA, 8.0, 0.4, offlineReverbBuffer);
+      scheduleNote(offlineCtx, offlineMaster, result.freq, timeA, noteDur, 0.4, offlineReverbBuffer);
       timeA += (1 / densityA);
     }
 
     let timeB = 0; let idxB = patternIdxB;
     const densityB = densityA * arc.ratio;
+    const noteDurB = (1 / densityB) * 2.5;
+    
     while (timeB < 60) {
       const result = getNextPatternNote(baseFreq, idxB, motifB, arc.minOctB, arc.maxOctB, arc.rootIndex);
       idxB = result.newPatternIndex;
-      scheduleNote(offlineCtx, offlineMaster, result.freq, timeB, 8.0, 0.4, offlineReverbBuffer);
+      scheduleNote(offlineCtx, offlineMaster, result.freq, timeB, noteDurB, 0.4, offlineReverbBuffer);
       timeB += (1 / densityB);
     }
 
@@ -358,7 +431,7 @@
     const a = document.createElement('a');
     a.style.display = 'none';
     a.href = url;
-    a.download = `open-final-v51-${Math.floor(currentProgress * 100)}percent-${Date.now()}.wav`;
+    a.download = `open-final-v54-${Math.floor(currentProgress * 100)}percent-${Date.now()}.wav`;
     document.body.appendChild(a);
     a.click();
     setTimeout(() => { document.body.removeChild(a); window.URL.revokeObjectURL(url); }, 100);
@@ -386,66 +459,6 @@
     document.addEventListener('keydown', (e) => {
       if (e.key.toLowerCase() === 'r') { renderWavExport(); }
     });
-  }
-
-  function killImmediate() {
-    if (timerInterval) clearInterval(timerInterval);
-    isPlaying = false;
-  }
-
-  async function startFromUI() {
-    ensureAudio();
-    if (audioContext.state === "suspended") await audioContext.resume();
-
-    masterGain.gain.cancelScheduledValues(audioContext.currentTime);
-    masterGain.gain.setValueAtTime(1, audioContext.currentTime);
-
-    nextTimeA = audioContext.currentTime; nextTimeB = audioContext.currentTime;
-    patternIdxA = 0; patternIdxB = 0;
-    isEndingNaturally = false; isApproachingEnd = false;
-
-    killImmediate();
-    isPlaying = true;
-    setButtonState("playing");
-    sessionStartTime = audioContext.currentTime;
-
-    timerInterval = setInterval(scheduler, 100);
-  }
-
-  function stopAllManual() {
-    setButtonState("stopped");
-    if (!audioContext) { isPlaying = false; return; }
-
-    isPlaying = false;
-    isEndingNaturally = false;
-
-    if (timerInterval) clearInterval(timerInterval);
-
-    const now = audioContext.currentTime;
-    masterGain.gain.cancelScheduledValues(now);
-    masterGain.gain.setValueAtTime(masterGain.gain.value, now);
-    masterGain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
-
-    setTimeout(() => { killImmediate(); }, 140);
-  }
-
-  function beginNaturalEnd() {
-    if (isEndingNaturally) return;
-
-    isEndingNaturally = true;
-    isPlaying = false;
-
-    if (timerInterval) clearInterval(timerInterval);
-
-    const now = audioContext.currentTime;
-    masterGain.gain.cancelScheduledValues(now);
-    masterGain.gain.setValueAtTime(masterGain.gain.value, now);
-    masterGain.gain.exponentialRampToValueAtTime(0.001, now + 6.0);
-
-    setTimeout(() => {
-      killImmediate();
-      setButtonState("stopped");
-    }, 6100);
   }
 
   document.addEventListener("DOMContentLoaded", () => {
