@@ -171,11 +171,12 @@
   let reverbPreDelay = null;
   let reverbSend = null;   
   let reverbReturn = null; 
+  let reverbLP = null; 
   
   let streamDest = null;
 
   // CONSTANTS: v27 Intensity
-  const REVERB_RETURN_LEVEL = 0.85; 
+  const REVERB_RETURN_LEVEL = 0.9; 
 
   // Playback State
   let isPlaying = false;
@@ -210,8 +211,9 @@
 
   // --- HELPERS (Audio) ---
   function createImpulseResponse(ctx) {
-    const duration = 5.0;
-    const decay = 1.5;
+    // v27: Short, fast, dense
+    const duration = 5.0; 
+    const decay = 1.5; 
     const rate = ctx.sampleRate;
     const length = Math.floor(rate * duration);
     const impulse = ctx.createBuffer(2, length, rate);
@@ -310,12 +312,19 @@
     streamDest = audioContext.createMediaStreamDestination();
     masterGain.connect(streamDest);
 
+    // v27: Instant Pre-Delay
     reverbPreDelay = audioContext.createDelay(0.1);
-    reverbPreDelay.delayTime.value = 0.02; 
+    reverbPreDelay.delayTime.value = 0.01; 
 
     reverbNode = audioContext.createConvolver();
     reverbNode.buffer = createImpulseResponse(audioContext);
     
+    // v27: Bright / Open Filter (15kHz)
+    reverbLP = audioContext.createBiquadFilter();
+    reverbLP.type = "lowpass";
+    reverbLP.frequency.value = 15000;
+    reverbLP.Q.value = 0.5;
+
     reverbSend = audioContext.createGain();
     reverbSend.gain.value = 0.0; 
     
@@ -324,7 +333,8 @@
 
     reverbSend.connect(reverbPreDelay);
     reverbPreDelay.connect(reverbNode);
-    reverbNode.connect(reverbReturn);
+    reverbNode.connect(reverbLP);
+    reverbLP.connect(reverbReturn);
     reverbReturn.connect(masterGain);
 
     const silent = audioContext.createBuffer(1, 1, audioContext.sampleRate);
@@ -348,28 +358,29 @@
     setupKeyboardShortcuts();
   }
 
-  // --- IDENTITY: TIMBRE ---
+  // --- UPGRADED: TIMBRE IDENTITY (v27 Resurrection) ---
   function scheduleNote(ctx, destination, wetSend, freq, time, duration, volume, instability = 0, tension = 0) {
     const numVoices = 2; 
     let totalAmp = 0;
     
     const isFractured = (tension > 0.75);
     const FRACTURE_RATIOS = [Math.SQRT2, 1.618, 2.414, 2.718, 3.1415]; 
-    const NORMAL_RATIOS = [1.5, 2.0, 2.5, 3.0, 4.0];
-
-    const baseIndex = isFractured ? (3.0 + (tension * 4.0)) : (1.0 + (tension * 2.0)); 
-    const ratioFuzz = isFractured ? 0.08 : 0.03; 
+    
+    // v27: Continuous, wide range for metallic shimmer
+    const ratioFuzz = isFractured ? 0.08 : 0.0; 
 
     const voices = Array.from({length: numVoices}, () => {
       let mRatio;
       if (isFractured) {
           mRatio = FRACTURE_RATIOS[Math.floor(rand() * FRACTURE_RATIOS.length)];
+          mRatio += (rand() - 0.5) * ratioFuzz;
       } else {
-          mRatio = NORMAL_RATIOS[Math.floor(rand() * NORMAL_RATIOS.length)];
+          // v27: 1.5 to 4.0 continuous
+          mRatio = 1.5 + rand() * 2.5;
       }
-      mRatio += (rand() - 0.5) * ratioFuzz;
 
-      const mIndex = baseIndex + (rand() * 1.5);
+      // v27: Index 1-5 range
+      const mIndex = 1.0 + (tension * 2.0) + (rand() * 2.0);
       const v = { modRatio: mRatio, modIndex: mIndex, amp: rand() };
       totalAmp += v.amp;
       return v;
@@ -392,7 +403,8 @@
       modGain.gain.exponentialRampToValueAtTime(freq * 0.5, time + duration);
       
       ampGain.gain.setValueAtTime(0.0001, time);
-      const atk = isFractured ? 0.005 : 0.015;
+      // v27: 10ms Attack (Sharp)
+      const atk = isFractured ? 0.005 : 0.01;
       ampGain.gain.exponentialRampToValueAtTime((voice.amp / totalAmp) * volume, time + atk);
       ampGain.gain.exponentialRampToValueAtTime(0.0001, time + duration);
       
@@ -506,8 +518,6 @@
     const noteDur = (1 / runDensity) * 2.5;
 
     // --- CONTINUOUS SPACE (Pre-Loop) ---
-    // Update space even when note loop isn't firing
-    // Skip during Shadow Arc to prevent fighting
     if (reverbSend && arcPos !== arcClimaxAt - 1) {
         let tickPressure = Math.min(1.0, notesSinceModulation / 48.0);
         if (arcPos === arcClimaxAt) tickPressure *= 2.5;
@@ -519,7 +529,8 @@
         const normTension = clamp01(tension);
         const normPressure = clamp01(tickPressure);
 
-        let targetSend = 0.30 - (0.25 * normDensity); 
+        // v27: 0.65 Baseline Send
+        let targetSend = 0.65 - (0.25 * normDensity); 
         targetSend += (normTension * 0.55);
         targetSend -= (0.10 * normPressure);
         
@@ -571,7 +582,8 @@
               const normTension = clamp01(tension);
               const normPressure = clamp01(pressure); 
               
-              let base = 0.30 - (0.25 * normDensity) + (normTension * 0.55);
+              // v27: 0.65 Baseline
+              let base = 0.65 - (0.25 * normDensity) + (normTension * 0.55);
               base -= (0.10 * normPressure);
               base = Math.max(0, Math.min(0.95, base));
               
@@ -744,9 +756,9 @@
 
     runDensity = 0.05 + rand() * 0.375;
     
-    // FIX: Dry Start ($0.30 - 0.05)
+    // v27: 0.65 Baseline
     const normDensity = clamp01((runDensity - 0.05) / 0.375);
-    const initSend = 0.30 - (0.25 * normDensity);
+    const initSend = 0.65 - (0.25 * normDensity);
     reverbSend.gain.setValueAtTime(initSend, audioContext.currentTime);
 
     sessionMotif = generateSessionMotif();
@@ -772,18 +784,29 @@
     const offlineCtx = new OfflineAudioContext(2, sampleRate * exportDuration, sampleRate);
     const offlineMaster = offlineCtx.createGain(); offlineMaster.gain.value = 0.3; offlineMaster.connect(offlineCtx.destination);
     
+    // v27: 0.01 Pre
     const offlinePreDelay = offlineCtx.createDelay(0.1);
-    offlinePreDelay.delayTime.value = 0.02;
+    offlinePreDelay.delayTime.value = 0.01;
+    
     const offlineReverb = offlineCtx.createConvolver(); 
     offlineReverb.buffer = createImpulseResponse(offlineCtx);
+    
+    // v27: Open Filter
+    const offlineReverbLP = offlineCtx.createBiquadFilter();
+    offlineReverbLP.type = "lowpass";
+    offlineReverbLP.frequency.value = 15000;
+    offlineReverbLP.Q.value = 0.5;
+
     const offlineSend = offlineCtx.createGain(); 
     offlineSend.gain.value = 0.0;
+    
     const offlineReturn = offlineCtx.createGain(); 
     offlineReturn.gain.value = REVERB_RETURN_LEVEL;
 
     offlineSend.connect(offlinePreDelay);
     offlinePreDelay.connect(offlineReverb);
-    offlineReverb.connect(offlineReturn);
+    offlineReverb.connect(offlineReverbLP);
+    offlineReverbLP.connect(offlineReturn);
     offlineReturn.connect(offlineMaster);
 
     // FORENSIC RECONSTRUCTION
@@ -903,7 +926,8 @@
        const normTension = clamp01(localTension);
        const normPressure = clamp01(pressure); 
        
-       let targetSend = 0.30 - (0.25 * normDensity); 
+       // v27: 0.65 Baseline
+       let targetSend = 0.65 - (0.25 * normDensity); 
        targetSend += (normTension * 0.55);
        targetSend -= (0.10 * normPressure); 
        
@@ -915,8 +939,8 @@
                 offlineSend.gain.setValueAtTime(offlineSend.gain.value, localTime);
                 offlineSend.gain.setTargetAtTime(0.0, localTime, 0.02);
            } else if (localPhraseStep === 14) {
-               // Exhale with pressure calc
-               let base = 0.30 - (0.25 * normDensity) + (normTension * 0.55);
+               // Exhale with pressure calc & 0.65 base
+               let base = 0.65 - (0.25 * normDensity) + (normTension * 0.55);
                base -= (0.10 * normPressure);
                base = Math.max(0, Math.min(0.95, base));
                offlineSend.gain.setTargetAtTime(base, localTime, 1.5);
@@ -1048,7 +1072,7 @@
     const renderedBuffer = await offlineCtx.startRendering();
     const wavBlob = bufferToWave(renderedBuffer, exportDuration * sampleRate);
     const url = URL.createObjectURL(wavBlob);
-    const a = document.createElement('a'); a.style.display = 'none'; a.href = url; a.download = `open-final-v123-${Date.now()}.wav`;
+    const a = document.createElement('a'); a.style.display = 'none'; a.href = url; a.download = `open-final-v125-${Date.now()}.wav`;
     document.body.appendChild(a); a.click();
     setTimeout(() => { document.body.removeChild(a); window.URL.revokeObjectURL(url); }, 100);
   }
