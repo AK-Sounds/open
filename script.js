@@ -174,8 +174,8 @@
   
   let streamDest = null;
 
-  // CONSTANTS: Dry Default
-  const REVERB_RETURN_LEVEL = 0.28; 
+  // CONSTANTS: Higher Baseline
+  const REVERB_RETURN_LEVEL = 0.42; 
 
   // Playback State
   let isPlaying = false;
@@ -506,8 +506,6 @@
     const noteDur = (1 / runDensity) * 2.5;
 
     // --- CONTINUOUS SPACE (Pre-Loop) ---
-    // Update space even when note loop isn't firing
-    // FIX: Skip during Shadow Arc to prevent fighting
     if (reverbSend && arcPos !== arcClimaxAt - 1) {
         let tickPressure = Math.min(1.0, notesSinceModulation / 48.0);
         if (arcPos === arcClimaxAt) tickPressure *= 2.5;
@@ -851,7 +849,6 @@
     
     function localUpdateHarmony(durIn) {
         const r = rand();
-        let totalSec = (durIn === "infinite") ? 99999 : parseFloat(durIn);
         
         let pressure = Math.min(1.0, localModCount / 48.0);
         if (localArcPos === localArcClimaxAt) pressure *= 2.5;
@@ -1049,7 +1046,7 @@
     const renderedBuffer = await offlineCtx.startRendering();
     const wavBlob = bufferToWave(renderedBuffer, exportDuration * sampleRate);
     const url = URL.createObjectURL(wavBlob);
-    const a = document.createElement('a'); a.style.display = 'none'; a.href = url; a.download = `open-final-v119-${Date.now()}.wav`;
+    const a = document.createElement('a'); a.style.display = 'none'; a.href = url; a.download = `open-final-v122-${Date.now()}.wav`;
     document.body.appendChild(a); a.click();
     setTimeout(() => { document.body.removeChild(a); window.URL.revokeObjectURL(url); }, 100);
   }
