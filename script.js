@@ -1,5 +1,5 @@
 (() => {
-  const STATE_KEY = "open_player_final_v70";
+  const STATE_KEY = "open_player_final_v70_2";
 
   // =========================
   // UTILITIES & UI
@@ -61,7 +61,7 @@
   }
 
   // =========================
-  // AUDIO ENGINE (v27 / Monophonic)
+  // AUDIO ENGINE (v27 Logic / Balanced Mix)
   // =========================
   function createReverbBuffer(ctx) {
     const duration = 5.0, decay = 1.5, rate = ctx.sampleRate, length = Math.floor(rate * duration);
@@ -80,7 +80,10 @@
     const conv = ctx.createConvolver();
     conv.buffer = reverbBuffer;
     const revGain = ctx.createGain();
+    
+    // RESTORED TO 1.5: Tail is quieter than new notes (Depth)
     revGain.gain.value = 1.5; 
+    
     conv.connect(revGain);
     revGain.connect(destination);
 
@@ -125,9 +128,9 @@
     });
   }
 
-  // ==========================================
+  // =========================
   // HARMONIC ENGINE
-  // ==========================================
+  // =========================
   let circlePosition = 0; 
   let isMinor = false; 
 
@@ -262,7 +265,7 @@
 
     while (nextTimeA < now + 0.5) {
       if (isApproachingEnd && !isEndingNaturally) {
-        // ENDING LOGIC (SNAPSHOT)
+        // SNAPSHOT ENDING
         const isRootNote = (patternIdxA % 7 === 0);
 
         if (isRootNote) {
@@ -273,6 +276,7 @@
         }
       }
 
+      // MODULATION CHECK
       if (!isApproachingEnd) {
           let modChance = 0.10; 
           const totalSecs = parseFloat(durationInput);
@@ -286,6 +290,7 @@
           }
       }
 
+      // MELODY WALKER
       const r = Math.random();
       let shift = 0;
       if (r < 0.4) shift = 1;
@@ -298,6 +303,7 @@
 
       let freq = getScaleNote(baseFreq, patternIdxA, circlePosition, isMinor);
       
+      // BASS TOLL LOGIC
       if (patternIdxA % 7 === 0) {
           if (Math.random() < 0.15) {
               freq = freq * 0.5; // 1 Octave Drop
@@ -314,17 +320,14 @@
   }
 
   // =========================
-  // v27 RESTORED KILL LOGIC
+  // STOP / KILL LOGIC
   // =========================
   function killImmediate() {
     if (timerInterval) clearInterval(timerInterval);
-    
-    // RESTORED: Reset Master Gain to 1.0 to let Reverb Tail ring out
     if (masterGain) { 
         masterGain.gain.cancelScheduledValues(audioContext.currentTime); 
         masterGain.gain.setValueAtTime(1, audioContext.currentTime); 
     }
-    
     isPlaying = false;
   }
 
@@ -337,7 +340,6 @@
 
     if (timerInterval) clearInterval(timerInterval);
 
-    // RESTORED: Fast Fade (0.1s) -> Wait -> Reset Gain to 1
     const now = audioContext.currentTime;
     masterGain.gain.cancelScheduledValues(now);
     masterGain.gain.setValueAtTime(masterGain.gain.value, now);
@@ -354,8 +356,6 @@
     const now = audioContext.currentTime;
     masterGain.gain.cancelScheduledValues(now);
     masterGain.gain.setValueAtTime(masterGain.gain.value, now);
-    
-    // Natural end gets a long fade (20s) to match the final tail
     masterGain.gain.exponentialRampToValueAtTime(0.001, now + 20.0);
 
     setTimeout(() => {
@@ -426,6 +426,7 @@
               if (r < 0.4) localMinor = !localMinor;
               else localCircle += (Math.random() < 0.7 ? 1 : -1);
           } else {
+              // Infinite
               if (!localMinor) { if (r < 0.7) localMinor = true; else localCircle += (Math.random() < 0.9 ? 1 : -1); }
               else { if (r < 0.3) localMinor = false; else localCircle += (Math.random() < 0.9 ? 1 : -1); }
           }
@@ -457,7 +458,7 @@
     const a = document.createElement('a');
     a.style.display = 'none';
     a.href = url;
-    a.download = `open-final-v70-${Date.now()}.wav`;
+    a.download = `open-final-v70_2-${Date.now()}.wav`;
     document.body.appendChild(a);
     a.click();
     setTimeout(() => { document.body.removeChild(a); window.URL.revokeObjectURL(url); }, 100);
