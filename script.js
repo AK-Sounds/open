@@ -174,8 +174,8 @@
   
   let streamDest = null;
 
-  // CONSTANTS: Higher Baseline
-  const REVERB_RETURN_LEVEL = 0.42; 
+  // CONSTANTS: v27 Intensity
+  const REVERB_RETURN_LEVEL = 0.85; 
 
   // Playback State
   let isPlaying = false;
@@ -506,6 +506,8 @@
     const noteDur = (1 / runDensity) * 2.5;
 
     // --- CONTINUOUS SPACE (Pre-Loop) ---
+    // Update space even when note loop isn't firing
+    // Skip during Shadow Arc to prevent fighting
     if (reverbSend && arcPos !== arcClimaxAt - 1) {
         let tickPressure = Math.min(1.0, notesSinceModulation / 48.0);
         if (arcPos === arcClimaxAt) tickPressure *= 2.5;
@@ -1046,7 +1048,7 @@
     const renderedBuffer = await offlineCtx.startRendering();
     const wavBlob = bufferToWave(renderedBuffer, exportDuration * sampleRate);
     const url = URL.createObjectURL(wavBlob);
-    const a = document.createElement('a'); a.style.display = 'none'; a.href = url; a.download = `open-final-v122-${Date.now()}.wav`;
+    const a = document.createElement('a'); a.style.display = 'none'; a.href = url; a.download = `open-final-v123-${Date.now()}.wav`;
     document.body.appendChild(a); a.click();
     setTimeout(() => { document.body.removeChild(a); window.URL.revokeObjectURL(url); }, 100);
   }
