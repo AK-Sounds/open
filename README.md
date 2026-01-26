@@ -11,7 +11,7 @@ The pacing is slow. The sounds do not ask for your attention. Rather, they sit a
 It’s designed to be light on your computer, using little memory so it can stay open in the background. You can change the tone or the duration, but there are no accounts to skip or profiles to save. The environment only exists as long as the window stays open.
 
 ### "Infinite" Mode and Structure
-When set to **Infinite**, the piece creates a non-repeating journey using specific harmonic logic:
+When set to "Infinite," the piece creates a non-repeating journey using specific harmonic logic:
 
 * **Circle of Fifths:** The system navigates through related keys (e.g., C Major → G Major → E Minor), creating a procession through different harmonic colors.
 * **Contour:** The melody is not random; it uses a constrained random walk. A "gravity" system pulls notes toward a central register, preventing the melody from drifting too high or too low while ensuring no two phrases are identical.
