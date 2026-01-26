@@ -1,6 +1,8 @@
 # Open
 
-*Open* began with the sound of cathedral bells drifting through an open window. The sound belonged in that room, and I felt its absence when I moved. That memory became the wellspring for this piece.
+> *Designed for desktop browsers.*
+
+[*Open*](https://stereo-images.github.io/open/) began with the sound of cathedral bells drifting through an open window. The sound belonged in that room, and I felt its absence when I moved. That memory became the wellspring for this piece.
 
 Instead of recording bells, I went in the opposite direction: a browser window. No particular scene, no particular place, just a sparse frame for sound to travel through. This music is my way of exploring what can come through that digital window, and what I can build inside it.
 
