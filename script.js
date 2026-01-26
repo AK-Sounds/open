@@ -175,7 +175,7 @@
   
   let streamDest = null;
 
-  // CONSTANTS: AIRIER CATHEDRAL
+  // CONSTANTS: CATHEDRAL (Airy + Safe)
   const REVERB_RETURN_LEVEL = 0.80; 
 
   // Playback State
@@ -501,7 +501,6 @@
       if (elapsed >= targetDuration) isApproachingEnd = true;
     }
     
-    // 55 Hz safety floor
     let baseFreq = Number(document.getElementById("tone")?.value ?? 110);
     if (!Number.isFinite(baseFreq)) baseFreq = 110;
     baseFreq = Math.max(55, Math.min(220, baseFreq));
@@ -509,8 +508,6 @@
     const noteDur = (1 / runDensity) * 2.5;
 
     // --- CONTINUOUS SPACE (Lazy Dynamics) ---
-    // Update space even when note loop isn't firing
-    // Skip during Shadow Arc to prevent fighting
     if (reverbSend && arcPos !== arcClimaxAt - 1) {
         let tickPressure = Math.min(1.0, notesSinceModulation / 48.0);
         if (arcPos === arcClimaxAt) tickPressure *= 2.5;
@@ -522,13 +519,12 @@
         const normTension = clamp01(tension);
         const normPressure = clamp01(tickPressure);
 
-        // CATHEDRAL: 0.65 Baseline Send
         let targetSend = 0.65 - (0.25 * normDensity); 
         targetSend += (normTension * 0.55);
         targetSend -= (0.10 * normPressure);
         
         targetSend = Math.max(0, Math.min(0.95, targetSend));
-        reverbSend.gain.setTargetAtTime(targetSend, now, 2.5); // LAZY RELEASE
+        reverbSend.gain.setTargetAtTime(targetSend, now, 2.5); 
     }
 
     while (nextTimeA < now + 0.5) {
@@ -562,23 +558,18 @@
       }
       const isCadence = (phraseStep >= 13);
 
-      // --- THE SHADOW & THE EXHALE ---
       if (reverbSend && arcPos === arcClimaxAt - 1) {
           if (phraseStep === 13) {
-              // Vacuum: Slam shut
               reverbSend.gain.cancelScheduledValues(nextTimeA);
               reverbSend.gain.setValueAtTime(reverbSend.gain.value, nextTimeA);
               reverbSend.gain.setTargetAtTime(0.0, nextTimeA, 0.02);
           } else if (phraseStep === 14) {
-              // Exhale: Gentle return (Account for Pressure)
               const normDensity = clamp01((runDensity - 0.05) / 0.375);
               const normTension = clamp01(tension);
               const normPressure = clamp01(pressure); 
-              
               let base = 0.65 - (0.25 * normDensity) + (normTension * 0.55);
               base -= (0.10 * normPressure);
               base = Math.max(0, Math.min(0.95, base));
-              
               reverbSend.gain.setTargetAtTime(base, nextTimeA, 1.5);
           }
       }
@@ -610,7 +601,6 @@
           let delta = targetDeg - deg;
           if (delta > 3) delta -= 7; if (delta < -3) delta += 7;
           
-          // CORRECTED MELODIC BIAS (Variable Fix for Live Player)
           if (Math.abs(delta) === 3) delta = chance(0.5) ? 3 : -3;
           else if (delta === 0 && phraseStep <= 14 && chance(0.18)) delta = chance(0.5) ? 1 : -1;
           
@@ -661,20 +651,19 @@
           } else {
               const r = rand();
               let shift = 0;
-              // UPLIFTING CONTOUR BIAS
-              if (r < 0.50) shift = 1;         // 50% Up
-              else if (r < 0.82) shift = -1;   // 32% Down
-              else shift = chance(0.65) ? 2 : -2; // 18% Jump
+              if (r < 0.50) shift = 1;
+              else if (r < 0.82) shift = -1;
+              else shift = chance(0.65) ? 2 : -2;
               patternIdxA += shift;
           }
       }
       
-      // REGISTER GRAVITY (Center Anchor)
-      if (true) { // applied always for safety or non-cadence
+      // FIXED: GRAVITY (Using Global patternIdxA)
+      if (!isCadence) {
           const anchor = 1; 
           const reg = Math.floor(patternIdxA / 7);
-          if (reg < anchor && chance(0.22)) patternIdxA += 1; // Lift
-          else if (reg > anchor && chance(0.22)) patternIdxA -= 1; // Settle
+          if (reg < anchor && chance(0.22)) patternIdxA += 1; 
+          else if (reg > anchor && chance(0.22)) patternIdxA -= 1; 
       }
 
       if (patternIdxA > 10) patternIdxA = 10; if (patternIdxA < -8) patternIdxA = -8;
@@ -704,13 +693,11 @@
         let pedalFreq = getScaleNote(baseFreq, pedalIdx, circlePosition, isMinor);
         while (pedalFreq < 50) pedalFreq *= 2; 
         while (pedalFreq > 110) pedalFreq *= 0.5;
-        
         const t0 = Math.max(nextTimeA - 0.05, audioContext.currentTime);
         const pedalDur = atPhraseStart ? 16.0 : (atCadenceZone ? 12.0 : 7.0);
         scheduleBassPedal(audioContext, masterGain, reverbSend, pedalFreq, t0, pedalDur, 0.18);
       }
 
-      // Climax Double
       if (isCadence && arcPos === arcClimaxAt && phraseStep === 15) {
           scheduleNote(audioContext, masterGain, reverbSend, freq * 2.0, nextTimeA, appliedDur, 0.35, pressure, tension);
       }
@@ -723,34 +710,27 @@
     }
   }
 
-  // --- OFFLINE EXPORT (Remains Separate & Correct) ---
   async function renderWavExport() {
     if (!isPlaying && !audioContext) { alert("Please start playback first."); return; }
     if (!sessionSnapshot?.seed) { alert("Press Play once first."); return; }
-    console.log("Rendering Studio Export...");
     setSeed(sessionSnapshot.seed);
 
     const durationInput = document.getElementById("songDuration")?.value ?? "60";
     const exportDuration = (durationInput === "infinite") ? 180 : Math.min(180, parseFloat(durationInput));
-    
     const sampleRate = 44100;
     const offlineCtx = new OfflineAudioContext(2, sampleRate * exportDuration, sampleRate);
     const offlineMaster = offlineCtx.createGain(); offlineMaster.gain.value = 0.3; offlineMaster.connect(offlineCtx.destination);
     
     const offlinePreDelay = offlineCtx.createDelay(0.1);
     offlinePreDelay.delayTime.value = 0.045;
-    
     const offlineReverb = offlineCtx.createConvolver(); 
     offlineReverb.buffer = createImpulseResponse(offlineCtx);
-    
     const offlineReverbLP = offlineCtx.createBiquadFilter();
     offlineReverbLP.type = "lowpass";
     offlineReverbLP.frequency.value = 4200;
     offlineReverbLP.Q.value = 0.7;
-
     const offlineSend = offlineCtx.createGain(); 
     offlineSend.gain.value = 0.0;
-    
     const offlineReturn = offlineCtx.createGain(); 
     offlineReturn.gain.value = REVERB_RETURN_LEVEL;
 
@@ -760,7 +740,6 @@
     offlineReverbLP.connect(offlineReturn);
     offlineReturn.connect(offlineMaster);
 
-    // FORENSIC RECONSTRUCTION VARS
     let localPhraseCount = 0;
     let localArcLen = 6;
     let localArcPos = 0;
@@ -777,9 +756,7 @@
     }
     localStartNewArc(); 
 
-    const dummyDensity = 0.05 + rand() * 0.375; 
     const exportDensity = sessionSnapshot.density; 
-
     const dummyMotif = generateSessionMotif(); 
     const localMotif = [...sessionSnapshot.motif]; 
 
@@ -796,7 +773,6 @@
     function localPickCadenceType(){
       const nearClimax = (localArcPos === localArcClimaxAt); const lateArc = (localArcPos >= localArcLen - 2);
       let w = { evaded:0.20, half:0.28, plagal:0.12, deceptive:0.18, authentic:0.22 };
-      
       if (localArcPos < localArcClimaxAt) { w.authentic = 0.05; w.evaded += 0.2; w.half += 0.1; }
       w.authentic += localTension * 0.25; w.deceptive += localTension * 0.10; w.evaded -= localTension * 0.18; w.half -= localTension * 0.08;
       if (nearClimax) { w.authentic+=0.25; w.deceptive+=0.10; w.evaded-=0.20; w.half-=0.10; }
@@ -817,7 +793,6 @@
         default:           return {pre:2,end:0,wantLT:false};
       }
     }
-    
     function localUpdateHarmony(durIn) {
         const r = rand();
         let pressure = Math.min(1.0, localModCount / 48.0);
@@ -910,11 +885,8 @@
          }
          let delta = targetDeg - deg;
          if (delta > 3) delta -= 7; if (delta < -3) delta += 7;
-         
-         // Fix applied to offline as well
          if (Math.abs(delta) === 3) delta = chance(0.5) ? 3 : -3;
          else if (delta === 0 && localPhraseStep <= 14 && chance(0.18)) delta = chance(0.5) ? 1 : -1;
-         
          localIdx = currentOctave + deg + delta;
 
          const ct = localCadenceType;
@@ -960,22 +932,14 @@
          } else {
            const r = rand();
            let shift = 0;
-           // UPLIFTING CONTOUR
-           if (r < 0.50) shift = 1;
-           else if (r < 0.82) shift = -1;
-           else shift = chance(0.65) ? 2 : -2;
+           if (r < 0.50) shift = 1; else if (r < 0.82) shift = -1; else shift = chance(0.65) ? 2 : -2;
            localIdx += shift;
          }
        }
-       
-       // REGISTER GRAVITY
        if (!isCadence) {
-           const anchor = 1;
-           const reg = Math.floor(localIdx / 7);
-           if (reg < anchor && chance(0.22)) localIdx += 1; 
-           else if (reg > anchor && chance(0.22)) localIdx -= 1;
+           const anchor = 1; const reg = Math.floor(localIdx / 7);
+           if (reg < anchor && chance(0.22)) localIdx += 1; else if (reg > anchor && chance(0.22)) localIdx -= 1;
        }
-
        if (localIdx > 10) localIdx = 10; if (localIdx < -8) localIdx = -8;
 
        const degNow = ((localIdx - Math.floor(localIdx / 7) * 7) % 7 + 7) % 7;
@@ -1019,36 +983,9 @@
     const renderedBuffer = await offlineCtx.startRendering();
     const wavBlob = bufferToWave(renderedBuffer, exportDuration * sampleRate);
     const url = URL.createObjectURL(wavBlob);
-    const a = document.createElement('a'); a.style.display = 'none'; a.href = url; a.download = `open-final-v135-${Date.now()}.wav`;
+    const a = document.createElement('a'); a.style.display = 'none'; a.href = url; a.download = `open-final-v136-${Date.now()}.wav`;
     document.body.appendChild(a); a.click();
     setTimeout(() => { document.body.removeChild(a); window.URL.revokeObjectURL(url); }, 100);
-  }
-
-  function bufferToWave(abuffer, len) {
-    const numOfChan = abuffer.numberOfChannels; const length = len * numOfChan * 2 + 44;
-    const buffer = new ArrayBuffer(length); const view = new DataView(buffer);
-    const channels = []; const sampleRate = abuffer.sampleRate; let offset = 0, pos = 0;
-    function setUint16(data) { view.setUint16(pos, data, true); pos += 2; }
-    function setUint32(data) { view.setUint32(pos, data, true); pos += 4; }
-    setUint32(0x46464952); setUint32(length - 8); setUint32(0x45564157); setUint32(0x20746d66); setUint32(16); setUint16(1); setUint16(numOfChan);
-    setUint32(sampleRate); setUint32(sampleRate * 2 * numOfChan); setUint16(numOfChan * 2); setUint16(16); setUint32(0x61746164); setUint32(length - pos - 4);
-    for (let i = 0; i < numOfChan; i++) channels.push(abuffer.getChannelData(i));
-    while (pos < length) {
-      for (let i = 0; i < numOfChan; i++) {
-        let sample = Math.max(-1, Math.min(1, channels[i][offset]));
-        sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767) | 0;
-        view.setInt16(pos, sample, true);
-        pos += 2;
-      }
-      offset++;
-    }
-    return new Blob([buffer], { type: "audio/wav" });
-  }
-
-  function setupKeyboardShortcuts() {
-    document.addEventListener('keydown', (e) => { 
-      if (e.key.toLowerCase() === 'r') toggleRecording(); 
-    });
   }
 
   document.addEventListener("DOMContentLoaded", () => {
