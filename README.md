@@ -8,7 +8,7 @@ The page makes low, synthetic bell tones. They are tuned to a clear musical grid
 
 The pacing is slow. The sounds do not ask for your attention. Rather, they sit alongside and hopefully enhance whatever else is happening: the light in your room, the noise outside, or the work you're doing.
 
-It’s designed to be light on your computer, using little memory so it can stay open in the background. You can change the tone or the duration, but there are no accounts to skip or profiles to save. The environment only exists as long as the window stays open.
+The piece is meant to run quietly in the background with minimal fuss: no logins and no saved settings. You can change the tone or the duration. Each run is temporary, and when the sound stops, it’s gone.
 
 ### "Infinite" Mode and Structure
 When set to "Infinite," the piece creates a non-repeating journey using specific harmonic logic:
