@@ -501,6 +501,7 @@
       if (elapsed >= targetDuration) isApproachingEnd = true;
     }
     
+    // 55 Hz safety floor
     let baseFreq = Number(document.getElementById("tone")?.value ?? 110);
     if (!Number.isFinite(baseFreq)) baseFreq = 110;
     baseFreq = Math.max(55, Math.min(220, baseFreq));
@@ -508,6 +509,8 @@
     const noteDur = (1 / runDensity) * 2.5;
 
     // --- CONTINUOUS SPACE (Lazy Dynamics) ---
+    // Update space even when note loop isn't firing
+    // Skip during Shadow Arc to prevent fighting
     if (reverbSend && arcPos !== arcClimaxAt - 1) {
         let tickPressure = Math.min(1.0, notesSinceModulation / 48.0);
         if (arcPos === arcClimaxAt) tickPressure *= 2.5;
@@ -519,13 +522,13 @@
         const normTension = clamp01(tension);
         const normPressure = clamp01(tickPressure);
 
-        // CATHEDRAL: 0.65 Baseline
+        // CATHEDRAL: 0.65 Baseline Send
         let targetSend = 0.65 - (0.25 * normDensity); 
         targetSend += (normTension * 0.55);
         targetSend -= (0.10 * normPressure);
         
         targetSend = Math.max(0, Math.min(0.95, targetSend));
-        reverbSend.gain.setTargetAtTime(targetSend, now, 2.5); 
+        reverbSend.gain.setTargetAtTime(targetSend, now, 2.5); // LAZY RELEASE
     }
 
     while (nextTimeA < now + 0.5) {
@@ -562,16 +565,20 @@
       // --- THE SHADOW & THE EXHALE ---
       if (reverbSend && arcPos === arcClimaxAt - 1) {
           if (phraseStep === 13) {
+              // Vacuum: Slam shut
               reverbSend.gain.cancelScheduledValues(nextTimeA);
               reverbSend.gain.setValueAtTime(reverbSend.gain.value, nextTimeA);
               reverbSend.gain.setTargetAtTime(0.0, nextTimeA, 0.02);
           } else if (phraseStep === 14) {
+              // Exhale: Gentle return (Account for Pressure)
               const normDensity = clamp01((runDensity - 0.05) / 0.375);
               const normTension = clamp01(tension);
               const normPressure = clamp01(pressure); 
+              
               let base = 0.65 - (0.25 * normDensity) + (normTension * 0.55);
               base -= (0.10 * normPressure);
               base = Math.max(0, Math.min(0.95, base));
+              
               reverbSend.gain.setTargetAtTime(base, nextTimeA, 1.5);
           }
       }
@@ -603,11 +610,11 @@
           let delta = targetDeg - deg;
           if (delta > 3) delta -= 7; if (delta < -3) delta += 7;
           
-          // CORRECTED MELODIC BIAS (Variable Fix)
+          // CORRECTED MELODIC BIAS (Variable Fix for Live Player)
           if (Math.abs(delta) === 3) delta = chance(0.5) ? 3 : -3;
           else if (delta === 0 && phraseStep <= 14 && chance(0.18)) delta = chance(0.5) ? 1 : -1;
           
-          patternIdxA = currentOctave + deg + delta; // Using global patternIdxA
+          patternIdxA = currentOctave + deg + delta;
 
           const ct = currentCadenceType;
           const targ = cadenceTargets(ct);
@@ -654,20 +661,20 @@
           } else {
               const r = rand();
               let shift = 0;
-              // UPLIFTING CONTOUR
-              if (r < 0.50) shift = 1;
-              else if (r < 0.82) shift = -1;
-              else shift = chance(0.65) ? 2 : -2;
+              // UPLIFTING CONTOUR BIAS
+              if (r < 0.50) shift = 1;         // 50% Up
+              else if (r < 0.82) shift = -1;   // 32% Down
+              else shift = chance(0.65) ? 2 : -2; // 18% Jump
               patternIdxA += shift;
           }
       }
       
-      // REGISTER GRAVITY
-      if (!isCadence) {
+      // REGISTER GRAVITY (Center Anchor)
+      if (true) { // applied always for safety or non-cadence
           const anchor = 1; 
           const reg = Math.floor(patternIdxA / 7);
-          if (reg < anchor && chance(0.22)) patternIdxA += 1; 
-          else if (reg > anchor && chance(0.22)) patternIdxA -= 1; 
+          if (reg < anchor && chance(0.22)) patternIdxA += 1; // Lift
+          else if (reg > anchor && chance(0.22)) patternIdxA -= 1; // Settle
       }
 
       if (patternIdxA > 10) patternIdxA = 10; if (patternIdxA < -8) patternIdxA = -8;
@@ -716,6 +723,7 @@
     }
   }
 
+  // --- OFFLINE EXPORT (Remains Separate & Correct) ---
   async function renderWavExport() {
     if (!isPlaying && !audioContext) { alert("Please start playback first."); return; }
     if (!sessionSnapshot?.seed) { alert("Press Play once first."); return; }
@@ -729,14 +737,12 @@
     const offlineCtx = new OfflineAudioContext(2, sampleRate * exportDuration, sampleRate);
     const offlineMaster = offlineCtx.createGain(); offlineMaster.gain.value = 0.3; offlineMaster.connect(offlineCtx.destination);
     
-    // CATHEDRAL: 45ms Pre
     const offlinePreDelay = offlineCtx.createDelay(0.1);
     offlinePreDelay.delayTime.value = 0.045;
     
     const offlineReverb = offlineCtx.createConvolver(); 
     offlineReverb.buffer = createImpulseResponse(offlineCtx);
     
-    // CATHEDRAL: LP 4200
     const offlineReverbLP = offlineCtx.createBiquadFilter();
     offlineReverbLP.type = "lowpass";
     offlineReverbLP.frequency.value = 4200;
@@ -754,6 +760,7 @@
     offlineReverbLP.connect(offlineReturn);
     offlineReturn.connect(offlineMaster);
 
+    // FORENSIC RECONSTRUCTION VARS
     let localPhraseCount = 0;
     let localArcLen = 6;
     let localArcPos = 0;
@@ -903,8 +910,11 @@
          }
          let delta = targetDeg - deg;
          if (delta > 3) delta -= 7; if (delta < -3) delta += 7;
+         
+         // Fix applied to offline as well
          if (Math.abs(delta) === 3) delta = chance(0.5) ? 3 : -3;
          else if (delta === 0 && localPhraseStep <= 14 && chance(0.18)) delta = chance(0.5) ? 1 : -1;
+         
          localIdx = currentOctave + deg + delta;
 
          const ct = localCadenceType;
@@ -950,14 +960,22 @@
          } else {
            const r = rand();
            let shift = 0;
-           if (r < 0.50) shift = 1; else if (r < 0.82) shift = -1; else shift = chance(0.65) ? 2 : -2;
+           // UPLIFTING CONTOUR
+           if (r < 0.50) shift = 1;
+           else if (r < 0.82) shift = -1;
+           else shift = chance(0.65) ? 2 : -2;
            localIdx += shift;
          }
        }
+       
+       // REGISTER GRAVITY
        if (!isCadence) {
-           const anchor = 1; const reg = Math.floor(localIdx / 7);
-           if (reg < anchor && chance(0.22)) localIdx += 1; else if (reg > anchor && chance(0.22)) localIdx -= 1;
+           const anchor = 1;
+           const reg = Math.floor(localIdx / 7);
+           if (reg < anchor && chance(0.22)) localIdx += 1; 
+           else if (reg > anchor && chance(0.22)) localIdx -= 1;
        }
+
        if (localIdx > 10) localIdx = 10; if (localIdx < -8) localIdx = -8;
 
        const degNow = ((localIdx - Math.floor(localIdx / 7) * 7) % 7 + 7) % 7;
@@ -1001,7 +1019,7 @@
     const renderedBuffer = await offlineCtx.startRendering();
     const wavBlob = bufferToWave(renderedBuffer, exportDuration * sampleRate);
     const url = URL.createObjectURL(wavBlob);
-    const a = document.createElement('a'); a.style.display = 'none'; a.href = url; a.download = `open-final-v134-${Date.now()}.wav`;
+    const a = document.createElement('a'); a.style.display = 'none'; a.href = url; a.download = `open-final-v135-${Date.now()}.wav`;
     document.body.appendChild(a); a.click();
     setTimeout(() => { document.body.removeChild(a); window.URL.revokeObjectURL(url); }, 100);
   }
