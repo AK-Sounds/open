@@ -1,8 +1,12 @@
 :root {
-  --bg: #ffffff;
-  --text: #000000;
-  --line: #000000;
-  --btn-border: #000000;
+  --bg: #0c0f14;
+  --panel: #121826;
+  --text: #e8edf7;
+  --muted: #9aa7bd;
+  --btn: #2a3448;
+  --btn2: #1d2536;
+  --accent: #e8edf7;
+  --danger: #ff4d4d;
 }
 
 * { box-sizing: border-box; }
@@ -10,117 +14,130 @@ html, body { height: 100%; }
 
 body {
   margin: 0;
-  /* Matches the minimalist white font stack */
-  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
-  background: var(--bg);
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  background: radial-gradient(1200px 800px at 50% 20%, #121a2a 0%, var(--bg) 60%);
   color: var(--text);
-  display: flex;
-  justify-content: center;
-  align-items: center; /* Centers content vertically like the screenshot */
 }
 
 main {
-  width: 100%;
-  max-width: 380px; /* Constrains width to look like mobile view */
-  padding: 20px 24px;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 18px 40px;
 }
 
-/* HEADER */
-.main-title {
+/* LANDING VIEW STYLES */
+#launchOnly {
+  margin-top: 18px;
+  padding: 22px;
+  background: rgba(18, 24, 38, 0.8);
+  border: 1px solid rgba(232, 237, 247, 0.08);
+  border-radius: 14px;
+  /* Visible by default */
+  display: block; 
+}
+
+.launch-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.hint {
+  margin: 12px 0 0;
   text-align: center;
-  font-weight: 400;
-  font-size: 24px;
-  letter-spacing: 8px; /* Spreads out O P E N */
-  margin: 0 0 24px 0;
-  padding-left: 8px; /* Offset to visually center due to letter-spacing */
+  color: var(--muted);
+  line-height: 1.4;
+  font-size: 14px;
 }
 
-/* LINES */
-.divider {
-  border: 0;
-  border-top: 1px solid var(--line);
-  margin: 24px 0;
+/* PLAYER VIEW STYLES (Hidden by default) */
+#popoutTitle {
+  margin: 10px 0 16px;
+  font-size: 28px;
+  letter-spacing: 0.4px;
+  display: none; 
 }
 
-/* CONTROLS */
-.control-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 24px;
+#controls {
+  padding: 18px;
+  background: rgba(18, 24, 38, 0.85);
+  border: 1px solid rgba(232, 237, 247, 0.08);
+  border-radius: 14px;
+  display: none;
 }
 
-label {
-  font-size: 16px;
-  color: var(--text);
+/* STATE TOGGLES */
+/* When in popout/mobile mode, hide landing and show controls */
+body.popout #launchOnly, 
+body.mobile-player #launchOnly { 
+  display: none; 
 }
 
-/* DROPDOWN */
+body.popout #controls, 
+body.mobile-player #controls { 
+  display: block; 
+}
+
+body.popout #popoutTitle, 
+body.mobile-player #popoutTitle { 
+  display: block; 
+}
+
+/* FORM ELEMENTS */
+.form-group { margin-bottom: 14px; }
+label { display: block; color: var(--muted); font-size: 13px; margin-bottom: 6px; }
+select, input[type="range"] { width: 100%; }
+
 select {
-  font-size: 14px;
-  padding: 6px 10px;
-  border: 1px solid var(--btn-border);
-  background: white;
-  color: black;
-  border-radius: 0; /* Sharp corners */
-  min-width: 100px;
-  text-align: right;
-  appearance: none; /* Removes default OS styling for cleaner look */
-  -webkit-appearance: none;
-  background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23000000%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E");
-  background-repeat: no-repeat;
-  background-position: right 10px top 50%;
-  background-size: 10px auto;
-  padding-right: 30px;
+  background: var(--btn2);
+  color: var(--text);
+  border: 1px solid rgba(232, 237, 247, 0.12);
+  border-radius: 10px;
+  padding: 10px 12px;
+  outline: none;
 }
 
-/* SLIDER */
-input[type="range"] {
-  width: 140px;
-  accent-color: black; /* Makes the thumb black */
+.tone-row { display: flex; align-items: center; gap: 12px; }
+.readout { min-width: 92px; text-align: right; color: var(--muted); font-size: 13px; }
+
+.actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+
+.primary-btn, .secondary-btn {
+  border: 1px solid rgba(232, 237, 247, 0.12);
+  background: var(--btn2);
+  color: var(--text);
+  border-radius: 12px;
+  padding: 11px 14px;
   cursor: pointer;
+  user-select: none;
+  transition: transform 0.06s ease, background 0.15s ease, border-color 0.15s ease;
 }
 
-/* BUTTONS */
-.actions {
-  display: flex;
-  gap: 16px;
-  margin-top: 32px;
+.primary-btn { background: var(--btn); }
+.primary-btn:active, .secondary-btn:active { transform: translateY(1px); }
+
+.filled {
+  background: rgba(232, 237, 247, 0.12);
+  border-color: rgba(232, 237, 247, 0.18);
 }
 
-.btn {
-  flex: 1;
-  height: 48px;
-  font-size: 14px;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-  cursor: pointer;
-  border: 1px solid var(--btn-border);
-  transition: all 0.2s;
-}
+button:disabled { opacity: 0.55; cursor: not-allowed; }
 
-.play-btn {
-  background: white;
-  color: black;
-}
-.play-btn:active {
-  background: #f0f0f0;
-}
-/* If playing, you might want to invert styling via JS, 
-   but this matches the default state in image */
-
-.stop-btn {
-  background: black;
-  color: white;
-}
-.stop-btn:active {
-  opacity: 0.8;
-}
-
-/* FOOTER */
-.footer-text {
-  font-size: 12px;
-  color: #555; /* Slightly lighter gray for footer */
+.hotkeys {
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 13px;
   line-height: 1.5;
-  text-transform: uppercase;
 }
+
+kbd {
+  padding: 1px 6px;
+  border-radius: 6px;
+  border: 1px solid rgba(232, 237, 247, 0.18);
+  background: rgba(18, 24, 38, 0.85);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.record-status { margin-top: 8px; }
+.recording-on { color: var(--danger); }
