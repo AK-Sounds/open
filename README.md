@@ -13,11 +13,11 @@ The sounds do not ask for your attention. They sit alongside and maybe enhance w
 *Open* is meant to run quietly in the background with minimal fuss: no logins and no saved settings. You can change the tone or the duration. Each run is temporary, and when the sound stops, it’s gone.
 
 ### "Infinite" Mode and Structure
-When set to "Infinite," the piece creates a non-repeating journey using specific harmonic logic:
+When set to “Infinite,” the piece becomes a long-form drift using specific harmonic and melodic logic.
 
 * **Circle of Fifths:** Slowly moves by fifths through closely related keys, with intermittent toggles into the relative minor.
 * **Contour:** The melody is not random; it uses a constrained random walk. A "gravity" system pulls notes toward a central register, preventing the melody from reaching too high or too low while ensuring no two phrases are identical.
-* **Tension:** As the harmony moves away from the root, the bell timbre becomes brighter and the intervals more complex. When it resolves, the tone returns to a simpler, duller hum.
+* **Tension:** As structural tension rises (especially around peaks), the bell timbre becomes more fractured—brighter, less stable, and harmonically more ambiguous. Cadences tend to simplify the tone again.
 
 ### Technical Architecture
 *Open* is built on the standard Web Audio API without external libraries. The engine features specific acoustic modeling to achieve the physical weight of the sound.
@@ -33,8 +33,7 @@ When set to "Infinite," the piece creates a non-repeating journey using specific
 ### Usage
 1. **Launch:** Click "Open" to start the audio.
 2. **Tone:** Use the slider to set the fundamental frequency (Safety floor: 55Hz).
-3. **Duration:** Select a fixed time (1m, 5m, 30m) or Infinite.
-4. **Record:** Optional. Press 'R' or click Record to save a live `.webm` file of the current session.
+3. **Duration:** Select a fixed time (1m, 5m, 10m, 30m) or Infinite.
 
 ---
 *Est. 2026*
