@@ -2,13 +2,48 @@
   const STATE_KEY = "open_player_settings";
 
   // =========================
-  // UTILITIES & UI
+  // VIEW & STATE MANAGEMENT
   // =========================
   function isPopoutMode() { return window.location.hash === "#popout"; }
   function isMobileDevice() {
-    const ua = navigator.userAgent || "";
-    return /iPhone|iPad|iPod|Android/i.test(ua) ||
-      (window.matchMedia?.("(pointer: coarse)")?.matches && window.matchMedia?.("(max-width: 820px)")?.matches);
+    return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
+      (window.matchMedia?.("(pointer: coarse)")?.matches);
+  }
+
+  function updateView() {
+    const landing = document.getElementById("landing-view");
+    const player = document.getElementById("player-view");
+    
+    // If we are in Popout Mode (or user forced it via mobile logic), show Player.
+    // Otherwise, show the clean "Open" landing.
+    if (isPopoutMode()) {
+      landing?.classList.add("hidden");
+      player?.classList.remove("hidden");
+      document.body.classList.add("popout");
+    } else {
+      landing?.classList.remove("hidden");
+      player?.classList.add("hidden");
+      document.body.classList.remove("popout");
+    }
+  }
+
+  function launchPopout() {
+    // Desktop: Open small window
+    // Mobile: Just show the player in-place (popups are often blocked/annoying on phone)
+    if (isMobileDevice()) {
+      window.location.hash = "#popout";
+      updateView();
+    } else {
+      const width = 480;
+      const height = 640;
+      const left = (window.screen.width / 2) - (width / 2);
+      const top = (window.screen.height / 2) - (height / 2);
+      window.open(
+        `${window.location.href.split("#")[0]}#popout`, 
+        "open_player", 
+        `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=no,status=no`
+      );
+    }
   }
 
   function loadState() {
@@ -51,9 +86,9 @@
     const stopBtn = document.getElementById("stop");
     const toneInput = document.getElementById("tone");
 
-    // "Filled" indicates the PRIMARY ACTION to take.
-    // If Playing: Primary action is STOP.
-    // If Stopped: Primary action is PLAY.
+    // Primary Action Logic:
+    // If Playing -> STOP is filled.
+    // If Stopped -> PLAY is filled.
     if (playBtn) playBtn.classList.toggle("filled", state !== "playing");
     if (stopBtn) stopBtn.classList.toggle("filled", state === "playing");
     
@@ -950,6 +985,12 @@
   }
 
   document.addEventListener("DOMContentLoaded", () => {
+    updateView(); // Initial view check
+    
+    // Landing Page Action
+    document.getElementById("enterBtn")?.addEventListener("click", launchPopout);
+
+    // Player Actions
     const playBtn = document.getElementById("playNow");
     const stopBtn = document.getElementById("stop");
     
@@ -964,19 +1005,5 @@
     document.getElementById("songDuration")?.addEventListener("change", () => saveState(readControls()));
     const recBtn = document.getElementById("record");
     if (recBtn) recBtn.onclick = toggleRecording;
-
-    if (isPopoutMode()) {
-      document.body.classList.add("popout");
-      setButtonState("stopped");
-    }
-
-    document.getElementById("launchPlayer")?.addEventListener("click", () => {
-      if (!isPopoutMode() && isMobileDevice()) {
-        document.body.classList.add("mobile-player");
-        setButtonState("stopped");
-      } else {
-        window.open(`${window.location.href.split("#")[0]}#popout`, "open_player", "width=500,height=680,resizable=yes");
-      }
-    });
   });
 })();
