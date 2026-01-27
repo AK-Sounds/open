@@ -1,4 +1,4 @@
-/* style.css — Open (Home button -> Popout Player). No record button. */
+/* style.css — Open (landing-only + popout player) */
 
 * { box-sizing: border-box; }
 
@@ -40,7 +40,7 @@ main {
 }
 
 /* =========================
-   HOME HERO BUTTON
+   LANDING HERO BUTTON
    ========================= */
 .secondary-btn {
   background-color: #fff !important;
@@ -54,68 +54,19 @@ main {
   transition: background-color 0.1s ease, color 0.1s ease;
 }
 
-.secondary-btn:hover,
-.secondary-btn:focus-visible {
+.secondary-btn:hover {
   background-color: #000 !important;
   color: #fff !important;
-  outline: none;
 }
 
 /* =========================
-   SLIDER (visible + minimal)
-   ========================= */
-input[type="range"] {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 50%;
-  height: 2px;
-  background: #000;
-  outline: none;
-  margin: 0;
-  padding: 0;
-  cursor: pointer;
-}
-
-input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 12px;
-  height: 12px;
-  background: #000;
-  cursor: pointer;
-  border: none;
-}
-
-input[type="range"]::-moz-range-thumb {
-  width: 12px;
-  height: 12px;
-  background: #000;
-  cursor: pointer;
-  border: none;
-}
-
-/* =========================
-   PIXEL ANCHOR (Mobile wake lock helper)
-   ========================= */
-video {
-  pointer-events: none;
-  position: fixed;
-  bottom: 0;
-  right: 0;
-  width: 1px;
-  height: 1px;
-  opacity: 0.01;
-  z-index: -1;
-}
-
-/* =========================
-   PLAYER UI ELEMENTS
+   CONTROLS
    ========================= */
 .form-group {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 1.5rem;
-  gap: 1rem;
 }
 
 input, select, button {
@@ -145,14 +96,39 @@ button {
   transition: background-color 0.1s ease, color 0.1s ease;
 }
 
-button:focus-visible {
-  outline: 2px solid #000;
-  outline-offset: 2px;
-}
-
 button.filled {
   background-color: #000 !important;
   color: #fff !important;
+}
+
+/* =========================
+   VISIBLE SLIDER
+   ========================= */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 50%;
+  height: 2px;
+  background: #000;
+  outline: none;
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  background: #000;
+  cursor: pointer;
+  border: none;
+}
+input[type="range"]::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  background: #000;
+  cursor: pointer;
+  border: none;
 }
 
 /* =========================
@@ -175,12 +151,12 @@ button.filled {
 /* =========================
    MODE SWITCHING
    ========================= */
-/* Hide player UI by default (home page only) */
+/* Hide player UI by default (landing-only) */
 #controls, #credits, .separator, #popoutTitle {
   display: none;
 }
 
-/* Show player UI in popout/mobile-player mode */
+/* Show player in popout OR mobile-player mode */
 body.popout #controls,
 body.popout #credits,
 body.popout .separator,
@@ -192,15 +168,26 @@ body.mobile-player #popoutTitle {
   display: block;
 }
 
-/* Hide home launch in popout/mobile-player mode */
+/* Hide launch button in popout/mobile-player */
 body.popout #launchOnly,
 body.mobile-player #launchOnly {
   display: none;
 }
 
-/* Tighter margins for player view */
-body.popout main,
-body.mobile-player main {
+/* Tighter margins for popout window */
+body.popout main {
   margin: 2rem auto;
   max-width: 460px;
+}
+
+/* Wake-lock helper video (injected by JS) */
+video {
+  pointer-events: none;
+  position: fixed;
+  bottom: 0;
+  right: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0.01;
+  z-index: -1;
 }
