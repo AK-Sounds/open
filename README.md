@@ -34,7 +34,7 @@ When set to "Infinite," the piece creates a non-repeating journey using specific
 1. **Launch:** Click "Open" to start the audio.
 2. **Tone:** Use the slider to set the fundamental frequency (Safety floor: 55Hz).
 3. **Duration:** Select a fixed time (1m, 5m, 30m) or Infinite.
-4. **Record:** Press 'R' or click Record to save a live `.webm` file of the current session.
+4. **Record:** Optional. Press 'R' or click Record to save a live `.webm` file of the current session.
 
 ---
 *Est. 2026*
