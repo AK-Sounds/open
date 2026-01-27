@@ -32,7 +32,7 @@ When set to “Infinite,” the piece becomes a long-form drift using specific h
 
 ### Usage
 1. **Launch:** Click "Open" to start the audio.
-2. **Tone:** Use the slider to set the fundamental frequency (Safety floor: 55Hz).
+2. **Tone:** Use the slider to set the fundamental frequency (Safety floor: 100Hz).
 3. **Duration:** Select a fixed time (1m, 5m, 10m, 30m) or Infinite.
 
 ---
