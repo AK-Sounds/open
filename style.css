@@ -1,4 +1,4 @@
-/* style.css — Open (v17 Pro) Final Parity + Tighter Footer */
+/* style.css — Open (Home button -> Popout Player). No record button. */
 
 * { box-sizing: border-box; }
 
@@ -24,9 +24,8 @@ main {
   font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
   text-transform: uppercase;
   font-weight: normal;
-  
-  font-size: 1.5rem;         
-  letter-spacing: 1.8rem;    
+  font-size: 1.5rem;
+  letter-spacing: 1.8rem;
   text-indent: 1.8rem;
   line-height: 1.2;
 }
@@ -41,7 +40,7 @@ main {
 }
 
 /* =========================
-   MAIN PAGE HERO BUTTON
+   HOME HERO BUTTON
    ========================= */
 .secondary-btn {
   background-color: #fff !important;
@@ -55,20 +54,22 @@ main {
   transition: background-color 0.1s ease, color 0.1s ease;
 }
 
-.secondary-btn:hover {
+.secondary-btn:hover,
+.secondary-btn:focus-visible {
   background-color: #000 !important;
   color: #fff !important;
+  outline: none;
 }
 
 /* =========================
-   FIX: VISIBLE SLIDER
+   SLIDER (visible + minimal)
    ========================= */
 input[type="range"] {
   -webkit-appearance: none;
   appearance: none;
   width: 50%;
   height: 2px;
-  background: #000; 
+  background: #000;
   outline: none;
   margin: 0;
   padding: 0;
@@ -93,7 +94,7 @@ input[type="range"]::-moz-range-thumb {
 }
 
 /* =========================
-   PIXEL ANCHOR (Wake Lock)
+   PIXEL ANCHOR (Mobile wake lock helper)
    ========================= */
 video {
   pointer-events: none;
@@ -114,6 +115,7 @@ video {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 1.5rem;
+  gap: 1rem;
 }
 
 input, select, button {
@@ -133,7 +135,6 @@ input, select, button {
   margin-top: 2rem;
 }
 
-/* PLAYER BUTTONS */
 button {
   flex: 1;
   cursor: pointer;
@@ -142,6 +143,11 @@ button {
   letter-spacing: 0.2rem;
   text-indent: 0.2rem;
   transition: background-color 0.1s ease, color 0.1s ease;
+}
+
+button:focus-visible {
+  outline: 2px solid #000;
+  outline-offset: 2px;
 }
 
 button.filled {
@@ -153,13 +159,13 @@ button.filled {
    FOOTER & SEPARATOR
    ========================= */
 .separator {
-  margin-top: 2rem; 
+  margin-top: 2rem;
   border: 0;
   border-top: 1px solid #000;
 }
 
 #credits {
-  margin-top: 1rem; 
+  margin-top: 1rem;
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -169,24 +175,32 @@ button.filled {
 /* =========================
    MODE SWITCHING
    ========================= */
-/* Hide player controls by default */
-#controls, #credits, .separator, #popoutTitle { 
-  display: none; 
-}
-
-/* Show player controls in popout/mobile mode */
-body.popout #controls, body.popout #credits, body.popout .separator, body.popout #popoutTitle,
-body.mobile-player #controls, body.mobile-player #credits, body.mobile-player .separator, body.mobile-player #popoutTitle {
-  display: block;
-}
-
-/* Hide launch button in popout/mobile mode */
-body.popout #launchOnly, body.mobile-player #launchOnly {
+/* Hide player UI by default (home page only) */
+#controls, #credits, .separator, #popoutTitle {
   display: none;
 }
 
-/* Tighter margins for popout window */
-body.popout main {
+/* Show player UI in popout/mobile-player mode */
+body.popout #controls,
+body.popout #credits,
+body.popout .separator,
+body.popout #popoutTitle,
+body.mobile-player #controls,
+body.mobile-player #credits,
+body.mobile-player .separator,
+body.mobile-player #popoutTitle {
+  display: block;
+}
+
+/* Hide home launch in popout/mobile-player mode */
+body.popout #launchOnly,
+body.mobile-player #launchOnly {
+  display: none;
+}
+
+/* Tighter margins for player view */
+body.popout main,
+body.mobile-player main {
   margin: 2rem auto;
   max-width: 460px;
 }
