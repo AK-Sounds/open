@@ -8,38 +8,43 @@
 </head>
 <body>
 
-  <div class="container">
-    <header>
-      <h1>Open</h1>
-    </header>
+  <div id="landing-view" class="view-container">
+    <button id="enterBtn" class="clean-link">Open</button>
+  </div>
 
-    <main class="controls">
-      <div class="control-group">
-        <label for="tone">Tone <span id="hzReadout">110</span>Hz</label>
-        <input type="range" id="tone" min="100" max="250" value="110" step="1">
-      </div>
+  <div id="player-view" class="view-container hidden">
+    <div class="container">
+      <header>
+        <h1>Open</h1>
+      </header>
 
-      <div class="control-group">
-        <label for="songDuration">Duration</label>
-        <select id="songDuration">
-          <option value="60">1 Minute</option>
-          <option value="300">5 Minutes</option>
-          <option value="600">10 Minutes</option>
-          <option value="1800">30 Minutes</option>
-          <option value="infinite" selected>Infinite</option>
-        </select>
-      </div>
+      <main class="controls">
+        <div class="control-group">
+          <label for="tone">Tone <span id="hzReadout">110</span>Hz</label>
+          <input type="range" id="tone" min="100" max="250" value="110" step="1">
+        </div>
 
-      <div class="buttons">
-        <button id="playNow">Play</button>
-        <button id="stop">Stop</button>
-      </div>
-      
-      <div class="meta-controls">
-        <button id="record">Record</button>
-        <button id="launchPlayer">Popout</button>
-      </div>
-    </main>
+        <div class="control-group">
+          <label for="songDuration">Duration</label>
+          <select id="songDuration">
+            <option value="60">1 Minute</option>
+            <option value="300">5 Minutes</option>
+            <option value="600">10 Minutes</option>
+            <option value="1800">30 Minutes</option>
+            <option value="infinite" selected>Infinite</option>
+          </select>
+        </div>
+
+        <div class="buttons">
+          <button id="playNow">Play</button>
+          <button id="stop">Stop</button>
+        </div>
+        
+        <div class="meta-controls">
+          <button id="record">Record</button>
+        </div>
+      </main>
+    </div>
   </div>
 
   <script src="script.js"></script>
