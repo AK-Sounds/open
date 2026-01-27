@@ -20,10 +20,10 @@ When set to “Infinite,” the piece becomes a long-form drift using specific h
 * **Tension:** As structural tension rises (especially around peaks), the bell timbre becomes more fractured—brighter, less stable, and harmonically more ambiguous. Cadences tend to simplify the tone again.
 
 ### Technical Architecture
-*Open* is built on the standard Web Audio API without external libraries. The engine features specific acoustic modeling to achieve the physical weight of the sound.
+*Open* is built on the standard Web Audio API without external libraries. The engine uses a small FM voice model and convolution reverb to create a sense of physical space.
 
 * **Synthesis:** Notes are generated with FM oscillator pairs. Each note triggers a small cluster (usually 2–3 voices) with slightly different ratios and drift, so the bell is stable in pitch but never perfectly “clean.” In higher-tension moments, the ratios become more irregular for a rougher, more inharmonic sound.
-* **Decya:** The timbre fades faster than the volume—by ramping the FM depth down sooner than the amplitude—so notes start brighter and settle toward a simpler tone.
+* **Decay:** The timbre fades faster than the volume—by ramping the FM depth down sooner than the amplitude—so notes start brighter and settle toward a simpler tone.
 * **Acoustics:**
     * **Impulse Response:** Custom convolution reverb built from a 10-second noise impulse with a shaped decay curve.
     * **Pre-Delay (45ms):** Separates the dry hit from the reverb to suggest distance.
