@@ -1,5 +1,5 @@
 (() => {
-  const STATE_KEY = "open_player_settings_v146_warm_drone";
+  const STATE_KEY = "open_player_settings_v148_robust";
 
   // =========================
   // VIEW & STATE
@@ -353,7 +353,6 @@
     setupKeyboardShortcuts();
   }
 
-  // --- MELODY NOTE: Warmth Filter + Fast Brightness Decay ---
   function scheduleNote(ctx, destination, wetSend, freq, time, duration, volume, instability = 0, tensionAmt = 0) {
     const numVoices = 2 + Math.floor(rand() * 2);
     let totalAmp = 0;
@@ -397,7 +396,6 @@
       carrier.frequency.value = freq + drift;
       modulator.frequency.value = freq * voice.modRatio;
 
-      // BRIGHTNESS DECAY: Faster than volume (duration * 0.3)
       modGain.gain.setValueAtTime(freq * voice.modIndex, time);
       modGain.gain.exponentialRampToValueAtTime(freq * 0.01, time + (duration * 0.3));
 
@@ -442,12 +440,10 @@
     }
 
     if (isDrone) {
-      // FM BLOOM: 1.8 (Warm/Rich)
       modGain.gain.setValueAtTime(0, time);
       modGain.gain.linearRampToValueAtTime(freq * 1.8, time + (duration * 0.5));
       modGain.gain.linearRampToValueAtTime(0, time + duration);
     } else {
-      // PLUCK
       modGain.gain.setValueAtTime(freq * (0.35 + rand() * 0.25), time);
       modGain.gain.exponentialRampToValueAtTime(freq * 0.12, time + Math.max(0.5, duration));
     }
@@ -459,7 +455,6 @@
 
     lp.type = "lowpass";
     if (isDrone) {
-      // FILTER: 650Hz (Audible but warm)
       lp.frequency.setValueAtTime(650, time);
       lp.Q.value = 0.6;
     } else {
@@ -530,8 +525,9 @@
         else if (isMinor && chance(0.6)) isMinor = false;
       } else {
         const isJourneyMode = (durationInput === "infinite");
-        const dist = Math.abs(circlePosition);
-        if (!isJourneyMode && dist > 3 && chance(0.8)) {
+        const dist = Math.abs(localCircle); // localCircle isn't available here, fix:
+        const d = Math.abs(circlePosition);
+        if (!isJourneyMode && d > 3 && chance(0.8)) {
           circlePosition += (circlePosition > 0 ? -1 : 1);
         } else {
           if (chance(0.3)) isMinor = !isMinor;
@@ -553,7 +549,6 @@
       if (elapsed >= targetDuration) isApproachingEnd = true;
     }
 
-    // 100-200Hz Root
     let baseFreq = Number(document.getElementById("tone")?.value ?? 110);
     if (!Number.isFinite(baseFreq)) baseFreq = 110;
     baseFreq = Math.max(100, Math.min(200, baseFreq));
@@ -653,7 +648,8 @@
           targetDeg = (targetDeg + dir + 7) % 7;
         }
         let delta = targetDeg - deg;
-        if (delta > 3) delta -= 7; if (delta < -3) delta += 7;
+        if (delta > 3) delta -= 7;
+        if (delta < -3) delta += 7;
         if (Math.abs(delta) === 3) delta = chance(0.5) ? 3 : -3;
         else if (delta === 0 && phraseStep <= 14 && chance(0.18)) delta = chance(0.5) ? 1 : -1;
         patternIdxA = currentOctave + deg + delta;
@@ -735,15 +731,15 @@
       if (patternIdxA < -8) patternIdxA = -8;
 
       const degNow = ((patternIdxA - Math.floor(patternIdxA / 7) * 7) % 7 + 7) % 7;
-      const wantLT2 = localCadenceTargets(localCadenceType).wantLT;
-      const raiseLT = isCadence && wantLT2 && degNow === 6 && (phraseStep === 13 || phraseStep === 14 || pendingLTResolution);
+      const wantLT2 = cadenceTargets(currentCadenceType).wantLT;
+      const raiseLT = isCadence && wantLT && degNow === 6 && (phraseStep === 13 || phraseStep === 14 || pendingLTResolution);
       let freq = getScaleNote(baseFreq, patternIdxA, circlePosition, isMinor, { raiseLeadingTone: raiseLT });
 
       // --- SIGNPOST & DRONE LOGIC ---
       const isArcStart = (arcPos === 0 && phraseStep === 0);
       const isClimax = (arcPos === arcClimaxAt && phraseStep === 0);
 
-      // Only mute bells if NOT the intro phrase
+      // Only mute bells if NOT the very first phrase
       const isDroneSolo = (arcPos === 0 && phraseStep < 12 && phraseCount > 0);
 
       const atPhraseStart = (phraseStep === 0 || phraseStep === 1);
@@ -771,7 +767,6 @@
         const pedalIdx = pedalOct * 7 + pedalDegree;
         let pedalFreq = getScaleNote(baseFreq, pedalIdx, circlePosition, isMinor);
 
-        // DRONE PITCH FIX: >90Hz Cello range
         if (isArcStart) {
           while (pedalFreq < 90) pedalFreq *= 2;
           while (pedalFreq > 220) pedalFreq *= 0.5;
@@ -785,9 +780,7 @@
         if (isArcStart) pedalDur = 32.0;
         if (isClimax) pedalDur = 24.0;
 
-        // DRONE VOLUME: 0.35 for intro/climax
         const vol = (isArcStart || isClimax) ? 0.35 : 0.18;
-
         scheduleBassPedal(audioContext, masterGain, reverbSend, pedalFreq, t0, pedalDur, vol);
       }
 
@@ -810,11 +803,12 @@
     initAudio();
     if (audioContext.state === "suspended") audioContext.resume?.();
 
-    // FORCE RESET GAIN (Crucial for silence fix)
+    // FORCE RESET GAIN (Robust Fix)
     if (masterGain && audioContext) {
       const t = audioContext.currentTime;
-      masterGain.gain.cancelScheduledValues(t);
-      masterGain.gain.setValueAtTime(0.3, t);
+      masterGain.gain.cancelScheduledValues(0); // Cancel everything
+      masterGain.gain.setValueAtTime(0, t); // Snap to 0
+      masterGain.gain.linearRampToValueAtTime(0.3, t + 0.1); // Quick fade-in
     }
 
     const seed = (crypto?.getRandomValues
@@ -851,7 +845,9 @@
     if (masterGain && audioContext) {
       const t = audioContext.currentTime;
       masterGain.gain.cancelScheduledValues(t);
-      masterGain.gain.setTargetAtTime(0.0001, t, 0.02);
+      // ROBUST FADE OUT: Use linear ramp to ensure it hits 0
+      masterGain.gain.setValueAtTime(masterGain.gain.value, t);
+      masterGain.gain.linearRampToValueAtTime(0, t + 0.05);
     }
 
     setButtonState("stopped");
@@ -865,7 +861,6 @@
     setButtonState("stopped");
   }
 
-  // --- OFFLINE EXPORT ---
   async function renderWavExport() {
     if (!isPlaying && !audioContext) { alert("Please start playback first."); return; }
     if (!sessionSnapshot?.seed) { alert("Press Play once first."); return; }
@@ -1245,7 +1240,7 @@
     const a = document.createElement("a");
     a.style.display = "none";
     a.href = url;
-    a.download = `open-final-v146-${Date.now()}.wav`;
+    a.download = `open-final-v148-${Date.now()}.wav`;
     document.body.appendChild(a);
     a.click();
     setTimeout(() => { document.body.removeChild(a); window.URL.revokeObjectURL(url); }, 100);
@@ -1323,6 +1318,7 @@
     const recBtn = document.getElementById("record");
     if (recBtn) recBtn.onclick = toggleRecording;
 
+    // Export hook logic: if button exists, wire it up
     const exportBtn = document.getElementById("export");
     if (exportBtn) exportBtn.onclick = renderWavExport;
 
@@ -1334,7 +1330,7 @@
       setButtonState("stopped");
     }
 
-    // Use the centralized launchPlayer logic (desktop popup vs mobile hash-popout)
+    // Use the centralized launchPlayer logic
     document.getElementById("launchPlayer")?.addEventListener("click", launchPlayer);
   });
 })();
