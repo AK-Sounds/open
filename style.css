@@ -44,8 +44,10 @@ main {
    MAIN PAGE HERO BUTTON
    ========================= */
 .secondary-btn {
-  background-color: #fff !important;
-  color: #000 !important;
+  /* UPDATED: Black background, White text by default */
+  background-color: #000 !important;
+  color: #fff !important;
+  
   border: 1px solid #000;
   padding: 2rem 0;
   width: 100%;
@@ -55,9 +57,11 @@ main {
   transition: background-color 0.1s ease, color 0.1s ease;
 }
 
-.secondary-btn:hover {
-  background-color: #000 !important;
-  color: #fff !important;
+/* UPDATED: Turns White background, Black text when pressed or hovered */
+.secondary-btn:hover, 
+.secondary-btn:active {
+  background-color: #fff !important;
+  color: #000 !important;
 }
 
 /* =========================
