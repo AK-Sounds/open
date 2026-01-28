@@ -1,5 +1,5 @@
 (() => {
-  const STATE_KEY = "open_player_settings_v130_fix_drone";
+  const STATE_KEY = "open_player_settings_v146_warm_drone";
 
   // =========================
   // VIEW & STATE
@@ -76,7 +76,6 @@
     const stopBtn = document.getElementById("stop");
     const toneInput = document.getElementById("tone");
 
-    // FILLED (White) = Active State
     if (playBtn) playBtn.classList.toggle("filled", state === "playing");
     if (stopBtn) stopBtn.classList.toggle("filled", state !== "playing");
 
@@ -344,10 +343,11 @@
     setupKeyboardShortcuts();
   }
 
-  function scheduleNote(ctx, destination, wetSend, freq, time, duration, volume, instability = 0, tension = 0) {
+  function scheduleNote(ctx, destination, wetSend, freq, time, duration, volume, instability = 0, tensionAmt = 0) {
     const numVoices = 2 + Math.floor(rand() * 2); 
     let totalAmp = 0;
-    const isFractured = (tension > 0.75);
+    
+    const isFractured = (tensionAmt > 0.75);
     const FRACTURE_RATIOS = [Math.SQRT2, 1.618, 2.414, 2.718, 3.1415]; 
     const ratioFuzz = isFractured ? 0.08 : 0.0; 
 
@@ -359,7 +359,7 @@
       } else {
           mRatio = 1.5 + rand() * 2.5;
       }
-      const mIndex = 1.0 + (tension * 2.0) + (rand() * 3.0);
+      const mIndex = 1.0 + (tensionAmt * 2.0) + (rand() * 3.0);
       const v = { modRatio: mRatio, modIndex: mIndex, amp: rand() };
       totalAmp += v.amp;
       return v;
@@ -370,33 +370,44 @@
       const modulator = ctx.createOscillator();
       const modGain = ctx.createGain();
       const ampGain = ctx.createGain();
-      carrier.type = 'sine'; modulator.type = 'sine';
       
-      const driftMult = isFractured ? 18 : 12;
+      const toneFilter = ctx.createBiquadFilter();
+      toneFilter.type = "lowpass";
+      // Melody Filter: Cuts digital fizz above 6kHz
+      toneFilter.frequency.value = Math.min(freq * 3.5, 6000); 
+      toneFilter.Q.value = 0.6; 
+
+      carrier.type = 'sine'; 
+      modulator.type = 'sine';
+      
+      const driftMult = isFractured ? 15 : 10;
       const drift = (rand() - 0.5) * (2 + (instability * driftMult)); 
       
       carrier.frequency.value = freq + drift;
       modulator.frequency.value = freq * voice.modRatio;
       
       modGain.gain.setValueAtTime(freq * voice.modIndex, time);
-      modGain.gain.exponentialRampToValueAtTime(freq * 0.01, time + (duration * 0.7)); 
+      modGain.gain.exponentialRampToValueAtTime(freq * 0.01, time + (duration * 0.3)); 
       
       ampGain.gain.setValueAtTime(0.0001, time);
       const atk = isFractured ? 0.005 : 0.01;
       ampGain.gain.exponentialRampToValueAtTime((voice.amp / totalAmp) * volume, time + atk);
       ampGain.gain.exponentialRampToValueAtTime(0.0001, time + duration);
       
-      modulator.connect(modGain); modGain.connect(carrier.frequency);
-      carrier.connect(ampGain); 
-      ampGain.connect(destination); 
-      ampGain.connect(wetSend);
+      modulator.connect(modGain); 
+      modGain.connect(carrier.frequency);
+      
+      carrier.connect(ampGain);
+      ampGain.connect(toneFilter);
+      toneFilter.connect(destination); 
+      toneFilter.connect(wetSend);
       
       modulator.start(time); carrier.start(time);
       modulator.stop(time + duration); carrier.stop(time + duration);
     });
   }
 
-  // --- UPDATED BASS PEDAL (LOUDER & AUDIBLE) ---
+  // --- UPDATED BASS PEDAL (Warm & Present) ---
   function scheduleBassPedal(ctx, destination, wetSend, freq, time, duration, volume) {
     const isDrone = (duration > 20.0); 
 
@@ -421,9 +432,9 @@
     }
 
     if (isDrone) {
-      // FM BLOOM: Increased intensity (1.0) to make it buzzier/audible
+      // FM BLOOM: Adjusted to 1.8 (Warm Glow, not Metallic)
       modGain.gain.setValueAtTime(0, time);
-      modGain.gain.linearRampToValueAtTime(freq * 1.0, time + (duration * 0.5));
+      modGain.gain.linearRampToValueAtTime(freq * 1.8, time + (duration * 0.5));
       modGain.gain.linearRampToValueAtTime(0, time + duration);
     } else {
       // PLUCK
@@ -433,7 +444,7 @@
 
     ampGain.gain.setValueAtTime(0.0001, time);
     if (isDrone) {
-        ampGain.gain.exponentialRampToValueAtTime(volume, time + 2.0); // Fast attack (2s)
+        ampGain.gain.exponentialRampToValueAtTime(volume, time + 2.0); // Fast attack
     } else {
         ampGain.gain.exponentialRampToValueAtTime(volume, time + 0.15);
     }
@@ -441,8 +452,9 @@
 
     lp.type = 'lowpass'; 
     if (isDrone) {
-        lp.frequency.setValueAtTime(450, time); // Open up more (was 350)
-        lp.Q.value = 0.5; 
+        // FILTER: 650Hz (Warm cello range, cuts fizz)
+        lp.frequency.setValueAtTime(650, time); 
+        lp.Q.value = 0.6; 
     } else {
         lp.frequency.setValueAtTime(220 + rand() * 80, time); 
         lp.Q.setValueAtTime(0.7, time);
@@ -608,6 +620,7 @@
       else if (phraseStep === 13) slowProb = 0.20;
       if (chance(slowProb)) appliedDur *= (1.20 + rand() * 0.20);
 
+      // --- MELODY LOGIC (With Drone Solo Check) ---
       if (isCadence) {
           const targets = [0, 2, 4];
           const currentOctave = Math.floor(patternIdxA / 7) * 7;
@@ -693,7 +706,7 @@
       const raiseLT = isCadence && wantLT && degNow === 6 && (phraseStep === 13 || phraseStep === 14 || pendingLTResolution);
       let freq = getScaleNote(baseFreq, patternIdxA, circlePosition, isMinor, { raiseLeadingTone: raiseLT });
 
-      // --- SIGNPOST & DRONE LOGIC (LOUDER) ---
+      // --- SIGNPOST & DRONE LOGIC ---
       const isArcStart = (arcPos === 0 && phraseStep === 0);
       const isClimax = (arcPos === arcClimaxAt && phraseStep === 0);
       
@@ -715,7 +728,7 @@
         let pedalDegree = 0;
         
         if (isArcStart || isClimax) {
-          pedalDegree = 0; 
+          pedalDegree = 0; // Force root for signposts
         } else {
           if (planType === "half") pedalDegree = 4;
           else if (planType === "deceptive") pedalDegree = chance(0.6) ? 0 : 5;
@@ -726,8 +739,9 @@
         let pedalFreq = getScaleNote(baseFreq, pedalIdx, circlePosition, isMinor);
         
         if (isArcStart) {
-           // FIXED: Ensure drone isn't too low (180Hz ceiling)
-           while (pedalFreq > 180) pedalFreq *= 0.5; 
+           // FIXED: Force drone UP into cello range if it's too low (min 90Hz)
+           while (pedalFreq < 90) pedalFreq *= 2; 
+           while (pedalFreq > 220) pedalFreq *= 0.5;
         } else {
            while (pedalFreq < 50) pedalFreq *= 2; 
            while (pedalFreq > 110) pedalFreq *= 0.5;
@@ -1077,7 +1091,7 @@
          const pedalIdx = pedalOct * 7 + pedalDegree;
          let pedalFreq = getScaleNote(baseFreq, pedalIdx, localCircle, localMinor);
          
-         if (isArcStart) { while (pedalFreq > 180) pedalFreq *= 0.5; }
+         if (isArcStart) { while (pedalFreq < 90) pedalFreq *= 2; while (pedalFreq > 220) pedalFreq *= 0.5; }
          else { while (pedalFreq < 50) pedalFreq *= 2; while (pedalFreq > 110) pedalFreq *= 0.5; }
          
          const t0 = Math.max(localTime - 0.05, 0);
