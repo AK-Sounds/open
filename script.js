@@ -132,7 +132,7 @@
       setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
     };
 
-    mediaRecorder.start(250); 
+    mediaRecorder.start(250);
     isRecording = true;
     updateRecordStatusUI();
   }
@@ -165,7 +165,7 @@
   // DETERMINISTIC RNG
   // =========================
   let sessionSeed = 0;
-  let rng = Math.random; 
+  let rng = Math.random;
 
   function mulberry32(seed) {
     let a = seed >>> 0;
@@ -216,7 +216,11 @@
 
   let phraseCount = 0;
   let arcLen = 6;
-  let arcPos = 0;
+
+  // FIX: arcPos must start at -1 so the first phrase increments it to 0,
+  // making (arcPos===0 && phraseStep===0) a real "arc start" moment.
+  let arcPos = -1;
+
   let arcClimaxAt = 4;
   let tension = 0.0;
   let lastCadenceType = "none";
@@ -246,7 +250,8 @@
   function startNewArc() {
     arcLen = 4 + Math.floor(rand() * 5);
     arcClimaxAt = Math.max(2, arcLen - 2 - Math.floor(rand() * 2));
-    arcPos = 0;
+    // FIX: -1 so first phrase becomes 0 after increment
+    arcPos = -1;
     tension = clamp01(tension * 0.4 + 0.05);
   }
 
@@ -278,11 +283,11 @@
 
   function cadenceTargets(type) {
     switch(type){
-      case "authentic":  return { pre: 6, end: 0, wantLT: true  }; 
-      case "half":       return { pre: 1, end: 4, wantLT: false }; 
-      case "plagal":     return { pre: 3, end: 0, wantLT: false }; 
-      case "deceptive":  return { pre: 6, end: 5, wantLT: true  }; 
-      case "evaded":     return { pre: 6, end: 2, wantLT: true  }; 
+      case "authentic":  return { pre: 6, end: 0, wantLT: true  };
+      case "half":       return { pre: 1, end: 4, wantLT: false };
+      case "plagal":     return { pre: 3, end: 0, wantLT: false };
+      case "deceptive":  return { pre: 6, end: 5, wantLT: true  };
+      case "evaded":     return { pre: 6, end: 2, wantLT: true  };
       default:           return { pre: 2, end: 0, wantLT: false };
     }
   }
@@ -291,30 +296,30 @@
     if (audioContext) return;
     const Ctx = window.AudioContext || window.webkitAudioContext;
     audioContext = new Ctx();
-    
+
     masterGain = audioContext.createGain();
-    masterGain.gain.value = 0.3; 
+    masterGain.gain.value = 0.3;
     masterGain.connect(audioContext.destination);
-    
+
     streamDest = audioContext.createMediaStreamDestination();
     masterGain.connect(streamDest);
 
     reverbPreDelay = audioContext.createDelay(0.1);
-    reverbPreDelay.delayTime.value = 0.045; 
+    reverbPreDelay.delayTime.value = 0.045;
 
     reverbNode = audioContext.createConvolver();
     reverbNode.buffer = createImpulseResponse(audioContext);
-    
+
     reverbLP = audioContext.createBiquadFilter();
     reverbLP.type = "lowpass";
     reverbLP.frequency.value = 4200;
     reverbLP.Q.value = 0.7;
 
     reverbSend = audioContext.createGain();
-    reverbSend.gain.value = 0.0; 
-    
+    reverbSend.gain.value = 0.0;
+
     reverbReturn = audioContext.createGain();
-    reverbReturn.gain.value = REVERB_RETURN_LEVEL; 
+    reverbReturn.gain.value = REVERB_RETURN_LEVEL;
 
     reverbSend.connect(reverbPreDelay);
     reverbPreDelay.connect(reverbNode);
@@ -328,7 +333,7 @@
     heartbeat.loop = true;
     heartbeat.start();
     heartbeat.connect(audioContext.destination);
-    
+
     let videoWakeLock = document.querySelector('video');
     if (!videoWakeLock) {
       videoWakeLock = document.createElement('video');
@@ -339,25 +344,25 @@
     }
     videoWakeLock.srcObject = streamDest.stream;
     videoWakeLock.play().catch(() => {});
-    
+
     setupKeyboardShortcuts();
   }
 
   function scheduleNote(ctx, destination, wetSend, freq, time, duration, volume, instability = 0, tensionAmt = 0) {
-    const numVoices = 2 + Math.floor(rand() * 2); 
+    const numVoices = 2 + Math.floor(rand() * 2);
     let totalAmp = 0;
-    
+
     const isFractured = (tensionAmt > 0.75);
-    const FRACTURE_RATIOS = [Math.SQRT2, 1.618, 2.414, 2.718, 3.1415]; 
-    const ratioFuzz = isFractured ? 0.08 : 0.0; 
+    const FRACTURE_RATIOS = [Math.SQRT2, 1.618, 2.414, 2.718, 3.1415];
+    const ratioFuzz = isFractured ? 0.08 : 0.0;
 
     const voices = Array.from({length: numVoices}, () => {
       let mRatio;
       if (isFractured) {
-          mRatio = FRACTURE_RATIOS[Math.floor(rand() * FRACTURE_RATIOS.length)];
-          mRatio += (rand() - 0.5) * ratioFuzz;
+        mRatio = FRACTURE_RATIOS[Math.floor(rand() * FRACTURE_RATIOS.length)];
+        mRatio += (rand() - 0.5) * ratioFuzz;
       } else {
-          mRatio = 1.5 + rand() * 2.5;
+        mRatio = 1.5 + rand() * 2.5;
       }
       const mIndex = 1.0 + (tensionAmt * 2.0) + (rand() * 3.0);
       const v = { modRatio: mRatio, modIndex: mIndex, amp: rand() };
@@ -370,38 +375,38 @@
       const modulator = ctx.createOscillator();
       const modGain = ctx.createGain();
       const ampGain = ctx.createGain();
-      
+
       const toneFilter = ctx.createBiquadFilter();
       toneFilter.type = "lowpass";
       // Melody Filter: Cuts digital fizz above 6kHz
-      toneFilter.frequency.value = Math.min(freq * 3.5, 6000); 
-      toneFilter.Q.value = 0.6; 
+      toneFilter.frequency.value = Math.min(freq * 3.5, 6000);
+      toneFilter.Q.value = 0.6;
 
-      carrier.type = 'sine'; 
+      carrier.type = 'sine';
       modulator.type = 'sine';
-      
+
       const driftMult = isFractured ? 15 : 10;
-      const drift = (rand() - 0.5) * (2 + (instability * driftMult)); 
-      
+      const drift = (rand() - 0.5) * (2 + (instability * driftMult));
+
       carrier.frequency.value = freq + drift;
       modulator.frequency.value = freq * voice.modRatio;
-      
+
       modGain.gain.setValueAtTime(freq * voice.modIndex, time);
-      modGain.gain.exponentialRampToValueAtTime(freq * 0.01, time + (duration * 0.3)); 
-      
+      modGain.gain.exponentialRampToValueAtTime(freq * 0.01, time + (duration * 0.3));
+
       ampGain.gain.setValueAtTime(0.0001, time);
       const atk = isFractured ? 0.005 : 0.01;
       ampGain.gain.exponentialRampToValueAtTime((voice.amp / totalAmp) * volume, time + atk);
       ampGain.gain.exponentialRampToValueAtTime(0.0001, time + duration);
-      
-      modulator.connect(modGain); 
+
+      modulator.connect(modGain);
       modGain.connect(carrier.frequency);
-      
+
       carrier.connect(ampGain);
       ampGain.connect(toneFilter);
-      toneFilter.connect(destination); 
+      toneFilter.connect(destination);
       toneFilter.connect(wetSend);
-      
+
       modulator.start(time); carrier.start(time);
       modulator.stop(time + duration); carrier.stop(time + duration);
     });
@@ -409,7 +414,7 @@
 
   // --- UPDATED BASS PEDAL (Warm & Present) ---
   function scheduleBassPedal(ctx, destination, wetSend, freq, time, duration, volume) {
-    const isDrone = (duration > 20.0); 
+    const isDrone = (duration > 20.0);
 
     const carrier = ctx.createOscillator();
     const modulator = ctx.createOscillator();
@@ -417,14 +422,14 @@
     const ampGain = ctx.createGain();
     const lp = ctx.createBiquadFilter();
 
-    carrier.type = 'sine'; 
+    carrier.type = 'sine';
     modulator.type = 'sine';
 
     if (isDrone) {
       // DRONE: Pure Octave (2.0)
       carrier.frequency.value = freq;
-      modulator.frequency.value = freq * 2.0; 
-      modulator.detune.value = (rand() - 0.5) * 6; 
+      modulator.frequency.value = freq * 2.0;
+      modulator.detune.value = (rand() - 0.5) * 6;
     } else {
       // PEDAL: Gritty
       carrier.frequency.value = freq + (rand() - 0.5) * 0.6;
@@ -444,30 +449,30 @@
 
     ampGain.gain.setValueAtTime(0.0001, time);
     if (isDrone) {
-        ampGain.gain.exponentialRampToValueAtTime(volume, time + 2.0); // Fast attack
+      ampGain.gain.exponentialRampToValueAtTime(volume, time + 2.0); // Fast attack
     } else {
-        ampGain.gain.exponentialRampToValueAtTime(volume, time + 0.15);
+      ampGain.gain.exponentialRampToValueAtTime(volume, time + 0.15);
     }
     ampGain.gain.exponentialRampToValueAtTime(0.0001, time + duration);
 
-    lp.type = 'lowpass'; 
+    lp.type = 'lowpass';
     if (isDrone) {
-        // FILTER: 650Hz (Warm cello range, cuts fizz)
-        lp.frequency.setValueAtTime(650, time); 
-        lp.Q.value = 0.6; 
+      // FILTER: 650Hz (Warm cello range, cuts fizz)
+      lp.frequency.setValueAtTime(650, time);
+      lp.Q.value = 0.6;
     } else {
-        lp.frequency.setValueAtTime(220 + rand() * 80, time); 
-        lp.Q.setValueAtTime(0.7, time);
+      lp.frequency.setValueAtTime(220 + rand() * 80, time);
+      lp.Q.setValueAtTime(0.7, time);
     }
 
-    modulator.connect(modGain); 
+    modulator.connect(modGain);
     modGain.connect(carrier.frequency);
-    
-    carrier.connect(ampGain); 
+
+    carrier.connect(ampGain);
     ampGain.connect(lp);
-    lp.connect(destination); 
+    lp.connect(destination);
     lp.connect(wetSend);
-    
+
     modulator.start(time); carrier.start(time);
     modulator.stop(time + duration); carrier.stop(time + duration);
   }
@@ -475,9 +480,9 @@
   function getScaleNote(baseFreq, scaleIndex, circlePos, minorMode, opts = {}) {
     let pos = circlePos % 12; if (pos < 0) pos += 12;
     let semitones = (pos * 7) % 12;
-    let rootOffset = semitones; if (minorMode) rootOffset = (semitones + 9) % 12; 
+    let rootOffset = semitones; if (minorMode) rootOffset = (semitones + 9) % 12;
     const majorIntervals = [0, 2, 4, 5, 7, 9, 11];
-    const minorIntervals = [0, 2, 3, 5, 7, 8, 10]; 
+    const minorIntervals = [0, 2, 3, 5, 7, 8, 10];
     const len = 7;
     const octave = Math.floor(scaleIndex / len);
     const degree = ((scaleIndex % len) + len) % len;
@@ -488,44 +493,44 @@
   }
 
   function generateSessionMotif() {
-      const m = [0];
-      let walker = 0;
-      for(let i=0; i<3; i++) {
-          walker += (rand() < 0.5 ? 1 : -1) * (rand() < 0.4 ? 2 : 1);
-          m.push(walker);
-      }
-      return m;
+    const m = [0];
+    let walker = 0;
+    for (let i = 0; i < 3; i++) {
+      walker += (rand() < 0.5 ? 1 : -1) * (rand() < 0.4 ? 2 : 1);
+      m.push(walker);
+    }
+    return m;
   }
 
-  function updateHarmonyState(durationInput, isApproachingEnd) {
-      const r = rand();
-      let pressure = Math.min(1.0, notesSinceModulation / 48.0); 
-      if (arcPos === arcClimaxAt) pressure *= 2.5;
-      if (arcPos <= 1) pressure *= 0.2;
-      if (tension > 0.6) pressure *= 1.5;
-      pressure = Math.min(1.0, pressure);
+  function updateHarmonyState(durationInput, isApproachingEndFlag) {
+    const r = rand();
+    let pressure = Math.min(1.0, notesSinceModulation / 48.0);
+    if (arcPos === arcClimaxAt) pressure *= 2.5;
+    if (arcPos <= 1) pressure *= 0.2;
+    if (tension > 0.6) pressure *= 1.5;
+    pressure = Math.min(1.0, pressure);
 
-      const modChance = pressure * 0.35;
-      if (r < modChance) {
-          if (arcPos === arcClimaxAt && chance(0.6)) {
-             if (!isMinor) isMinor = true;
-             else circlePosition += (chance(0.5) ? 1 : -1); 
-          } else if (isApproachingEnd) {
-             if (circlePosition > 0) circlePosition--;
-             else if (circlePosition < 0) circlePosition++;
-             else if (isMinor && chance(0.6)) isMinor = false; 
-          } else {
-             const isJourneyMode = (durationInput === "infinite");
-             const dist = Math.abs(circlePosition);
-             if (!isJourneyMode && dist > 3 && chance(0.8)) {
-                 circlePosition += (circlePosition > 0 ? -1 : 1);
-             } else {
-                 if (chance(0.3)) isMinor = !isMinor;
-                 else circlePosition += (chance(0.5) ? 1 : -1);
-             }
-          }
-          notesSinceModulation = 0;
+    const modChance = pressure * 0.35;
+    if (r < modChance) {
+      if (arcPos === arcClimaxAt && chance(0.6)) {
+        if (!isMinor) isMinor = true;
+        else circlePosition += (chance(0.5) ? 1 : -1);
+      } else if (isApproachingEndFlag) {
+        if (circlePosition > 0) circlePosition--;
+        else if (circlePosition < 0) circlePosition++;
+        else if (isMinor && chance(0.6)) isMinor = false;
+      } else {
+        const isJourneyMode = (durationInput === "infinite");
+        const dist = Math.abs(circlePosition);
+        if (!isJourneyMode && dist > 3 && chance(0.8)) {
+          circlePosition += (circlePosition > 0 ? -1 : 1);
+        } else {
+          if (chance(0.3)) isMinor = !isMinor;
+          else circlePosition += (chance(0.5) ? 1 : -1);
+        }
       }
+      notesSinceModulation = 0;
+    }
   }
 
   function scheduler() {
@@ -537,39 +542,39 @@
       const targetDuration = parseFloat(durationInput);
       if (elapsed >= targetDuration) isApproachingEnd = true;
     }
-    
+
     // UPDATED: 100 Hz floor
     let baseFreq = Number(document.getElementById("tone")?.value ?? 110);
     if (!Number.isFinite(baseFreq)) baseFreq = 110;
     baseFreq = Math.max(100, Math.min(200, baseFreq));
-    
+
     const noteDur = (1 / runDensity) * 2.5;
 
     // --- CONTINUOUS SPACE ---
     if (reverbSend && arcPos !== arcClimaxAt - 1) {
-        let tickPressure = Math.min(1.0, notesSinceModulation / 48.0);
-        if (arcPos === arcClimaxAt) tickPressure *= 2.5;
-        if (arcPos <= 1) tickPressure *= 0.2;
-        if (tension > 0.6) tickPressure *= 1.5;
-        tickPressure = Math.min(1.0, tickPressure);
+      let tickPressure = Math.min(1.0, notesSinceModulation / 48.0);
+      if (arcPos === arcClimaxAt) tickPressure *= 2.5;
+      if (arcPos <= 1) tickPressure *= 0.2;
+      if (tension > 0.6) tickPressure *= 1.5;
+      tickPressure = Math.min(1.0, tickPressure);
 
-        const normDensity = clamp01((runDensity - 0.05) / 0.375);
-        const normTension = clamp01(tension);
-        const normPressure = clamp01(tickPressure);
+      const normDensity = clamp01((runDensity - 0.05) / 0.375);
+      const normTension = clamp01(tension);
+      const normPressure = clamp01(tickPressure);
 
-        let targetSend = 0.65 - (0.25 * normDensity); 
-        targetSend += (normTension * 0.55);
-        targetSend -= (0.10 * normPressure);
-        
-        targetSend = Math.max(0, Math.min(0.95, targetSend));
-        reverbSend.gain.setTargetAtTime(targetSend, now, 2.5); 
+      let targetSend = 0.65 - (0.25 * normDensity);
+      targetSend += (normTension * 0.55);
+      targetSend -= (0.10 * normPressure);
+
+      targetSend = Math.max(0, Math.min(0.95, targetSend));
+      reverbSend.gain.setTargetAtTime(targetSend, now, 2.5);
     }
 
     while (nextTimeA < now + 0.5) {
       let appliedDur = noteDur;
       let clearPendingAfterNote = false;
 
-      let pressure = Math.min(1.0, notesSinceModulation / 48.0); 
+      let pressure = Math.min(1.0, notesSinceModulation / 48.0);
       if (arcPos === arcClimaxAt) pressure *= 2.5;
       if (arcPos <= 1) pressure *= 0.2;
       if (tension > 0.6) pressure *= 1.5;
@@ -598,19 +603,19 @@
 
       // --- THE SHADOW ---
       if (reverbSend && arcPos === arcClimaxAt - 1) {
-          if (phraseStep === 13) {
-              reverbSend.gain.cancelScheduledValues(nextTimeA);
-              reverbSend.gain.setValueAtTime(reverbSend.gain.value, nextTimeA);
-              reverbSend.gain.setTargetAtTime(0.0, nextTimeA, 0.02);
-          } else if (phraseStep === 14) {
-              const normDensity = clamp01((runDensity - 0.05) / 0.375);
-              const normTension = clamp01(tension);
-              const normPressure = clamp01(pressure); 
-              let base = 0.65 - (0.25 * normDensity) + (normTension * 0.55);
-              base -= (0.10 * normPressure);
-              base = Math.max(0, Math.min(0.95, base));
-              reverbSend.gain.setTargetAtTime(base, nextTimeA, 1.5);
-          }
+        if (phraseStep === 13) {
+          reverbSend.gain.cancelScheduledValues(nextTimeA);
+          reverbSend.gain.setValueAtTime(reverbSend.gain.value, nextTimeA);
+          reverbSend.gain.setTargetAtTime(0.0, nextTimeA, 0.02);
+        } else if (phraseStep === 14) {
+          const normDensity = clamp01((runDensity - 0.05) / 0.375);
+          const normTension = clamp01(tension);
+          const normPressure = clamp01(pressure);
+          let base = 0.65 - (0.25 * normDensity) + (normTension * 0.55);
+          base -= (0.10 * normPressure);
+          base = Math.max(0, Math.min(0.95, base));
+          reverbSend.gain.setTargetAtTime(base, nextTimeA, 1.5);
+        }
       }
 
       let slowProb = 0.0;
@@ -622,81 +627,81 @@
 
       // --- MELODY LOGIC (With Drone Solo Check) ---
       if (isCadence) {
-          const targets = [0, 2, 4];
-          const currentOctave = Math.floor(patternIdxA / 7) * 7;
-          let deg = patternIdxA - currentOctave;
-          deg = ((deg % 7) + 7) % 7;
-          let best = targets[0];
-          let bestD = circDist(deg, best);
-          for (let i = 1; i < targets.length; i++) {
-            const t = targets[i]; const d = circDist(deg, t);
-            if (d < bestD || (d === bestD && chance(0.5))) { best = t; bestD = d; }
-          }
-          const landProb = (phraseStep >= 15) ? 0.85 : 0.55;
-          let targetDeg = best;
-          if (!chance(landProb)) {
-            const dir = chance(0.65) ? -1 : 1;
-            targetDeg = (targetDeg + dir + 7) % 7;
-          }
-          let delta = targetDeg - deg;
-          if (delta > 3) delta -= 7; if (delta < -3) delta += 7;
-          if (Math.abs(delta) === 3) delta = chance(0.5) ? 3 : -3;
-          else if (delta === 0 && phraseStep <= 14 && chance(0.18)) delta = chance(0.5) ? 1 : -1;
-          patternIdxA = currentOctave + deg + delta;
+        const targets = [0, 2, 4];
+        const currentOctave = Math.floor(patternIdxA / 7) * 7;
+        let deg = patternIdxA - currentOctave;
+        deg = ((deg % 7) + 7) % 7;
+        let best = targets[0];
+        let bestD = circDist(deg, best);
+        for (let i = 1; i < targets.length; i++) {
+          const t = targets[i]; const d = circDist(deg, t);
+          if (d < bestD || (d === bestD && chance(0.5))) { best = t; bestD = d; }
+        }
+        const landProb = (phraseStep >= 15) ? 0.85 : 0.55;
+        let targetDeg = best;
+        if (!chance(landProb)) {
+          const dir = chance(0.65) ? -1 : 1;
+          targetDeg = (targetDeg + dir + 7) % 7;
+        }
+        let delta = targetDeg - deg;
+        if (delta > 3) delta -= 7; if (delta < -3) delta += 7;
+        if (Math.abs(delta) === 3) delta = chance(0.5) ? 3 : -3;
+        else if (delta === 0 && phraseStep <= 14 && chance(0.18)) delta = chance(0.5) ? 1 : -1;
+        patternIdxA = currentOctave + deg + delta;
 
-          const ct = currentCadenceType;
-          const targ = cadenceTargets(ct);
-          if (phraseStep === 14) {
-            const forcePreProb = (ct === "evaded") ? 0.35 : (ct === "half") ? 0.45 : (ct === "plagal") ? 0.50 : 0.65;
-            if (chance(forcePreProb)) {
-              const targetDegPre = targ.pre;
-              const curOct = Math.floor(patternIdxA / 7) * 7;
-              const curDeg = ((patternIdxA - curOct) % 7 + 7) % 7;
-              let deltaPre = targetDegPre - curDeg;
-              if (deltaPre > 3) deltaPre -= 7; if (deltaPre < -3) deltaPre += 7;
-              patternIdxA += deltaPre;
-              pendingLTResolution = !!targ.wantLT;
-            }
+        const ct = currentCadenceType;
+        const targ = cadenceTargets(ct);
+        if (phraseStep === 14) {
+          const forcePreProb = (ct === "evaded") ? 0.35 : (ct === "half") ? 0.45 : (ct === "plagal") ? 0.50 : 0.65;
+          if (chance(forcePreProb)) {
+            const targetDegPre = targ.pre;
+            const curOct = Math.floor(patternIdxA / 7) * 7;
+            const curDeg = ((patternIdxA - curOct) % 7 + 7) % 7;
+            let deltaPre = targetDegPre - curDeg;
+            if (deltaPre > 3) deltaPre -= 7; if (deltaPre < -3) deltaPre += 7;
+            patternIdxA += deltaPre;
+            pendingLTResolution = !!targ.wantLT;
           }
-          if (phraseStep === 15) {
-            const baseProb = (ct === "evaded") ? (0.35 + tension * 0.20) : (ct === "half") ? 0.78 : (ct === "plagal") ? 0.74 : (ct === "deceptive") ? 0.86 : 0.90;
-            const finalProb = pendingLTResolution ? Math.min(0.98, baseProb + 0.06) : baseProb;
-            if (chance(finalProb)) {
-              const targetDegEnd = targ.end;
-              const curOct = Math.floor(patternIdxA / 7) * 7;
-              const curDeg = ((patternIdxA - curOct) % 7 + 7) % 7;
-              let deltaEnd = targetDegEnd - curDeg;
-              if (deltaEnd > 3) deltaEnd -= 7; if (deltaEnd < -3) deltaEnd += 7;
-              patternIdxA += deltaEnd;
-            }
-            if (ct === "evaded") tension = clamp01(tension + 0.18);
-            else if (ct === "half") tension = clamp01(tension + 0.08);
-            else if (ct === "deceptive") tension = clamp01(tension + 0.06);
-            else if (ct === "plagal") tension = clamp01(tension - 0.10);
-            else if (ct === "authentic") tension = clamp01(tension - 0.22);
-            lastCadenceType = ct;
-            clearPendingAfterNote = true;
+        }
+        if (phraseStep === 15) {
+          const baseProb = (ct === "evaded") ? (0.35 + tension * 0.20) : (ct === "half") ? 0.78 : (ct === "plagal") ? 0.74 : (ct === "deceptive") ? 0.86 : 0.90;
+          const finalProb = pendingLTResolution ? Math.min(0.98, baseProb + 0.06) : baseProb;
+          if (chance(finalProb)) {
+            const targetDegEnd = targ.end;
+            const curOct = Math.floor(patternIdxA / 7) * 7;
+            const curDeg = ((patternIdxA - curOct) % 7 + 7) % 7;
+            let deltaEnd = targetDegEnd - curDeg;
+            if (deltaEnd > 3) deltaEnd -= 7; if (deltaEnd < -3) deltaEnd += 7;
+            patternIdxA += deltaEnd;
           }
+          if (ct === "evaded") tension = clamp01(tension + 0.18);
+          else if (ct === "half") tension = clamp01(tension + 0.08);
+          else if (ct === "deceptive") tension = clamp01(tension + 0.06);
+          else if (ct === "plagal") tension = clamp01(tension - 0.10);
+          else if (ct === "authentic") tension = clamp01(tension - 0.22);
+          lastCadenceType = ct;
+          clearPendingAfterNote = true;
+        }
       } else {
-          const useMotif = chance(0.25);
-          if (useMotif && sessionMotif.length > 0) {
-              const motifInterval = sessionMotif[motifPos];
-              const currentOctave = Math.floor(patternIdxA / 7) * 7;
-              patternIdxA = currentOctave + motifInterval;
-              motifPos = (motifPos + 1) % sessionMotif.length;
-          } else {
-              const r = rand();
-              let shift = 0;
-              if (r < 0.50) shift = 1; else if (r < 0.82) shift = -1; else shift = chance(0.65) ? 2 : -2;
-              patternIdxA += shift;
-          }
+        const useMotif = chance(0.25);
+        if (useMotif && sessionMotif.length > 0) {
+          const motifInterval = sessionMotif[motifPos];
+          const currentOctave = Math.floor(patternIdxA / 7) * 7;
+          patternIdxA = currentOctave + motifInterval;
+          motifPos = (motifPos + 1) % sessionMotif.length;
+        } else {
+          const r = rand();
+          let shift = 0;
+          if (r < 0.50) shift = 1; else if (r < 0.82) shift = -1; else shift = chance(0.65) ? 2 : -2;
+          patternIdxA += shift;
+        }
       }
-      
+
       if (!isCadence) {
-          const anchor = 1; 
-          const reg = Math.floor(patternIdxA / 7);
-          if (reg < anchor && chance(0.22)) patternIdxA += 1; 
-          else if (reg > anchor && chance(0.22)) patternIdxA -= 1; 
+        const anchor = 1;
+        const reg = Math.floor(patternIdxA / 7);
+        if (reg < anchor && chance(0.22)) patternIdxA += 1;
+        else if (reg > anchor && chance(0.22)) patternIdxA -= 1;
       }
       if (patternIdxA > 10) patternIdxA = 10; if (patternIdxA < -8) patternIdxA = -8;
 
@@ -709,9 +714,9 @@
       // --- SIGNPOST & DRONE LOGIC ---
       const isArcStart = (arcPos === 0 && phraseStep === 0);
       const isClimax = (arcPos === arcClimaxAt && phraseStep === 0);
-      
-      // FIXED: Only mute bells if this is NOT the very first phrase (phraseCount > 0)
-      const isDroneSolo = (arcPos === 0 && phraseStep < 12 && phraseCount > 0); 
+
+      // Only mute bells if this is NOT the very first phrase (phraseCount > 0)
+      const isDroneSolo = (arcPos === 0 && phraseStep < 12 && phraseCount > 0);
 
       const atPhraseStart = (phraseStep === 0 || phraseStep === 1);
       const atCadenceZone = (phraseStep >= 13);
@@ -726,7 +731,7 @@
       if (isArcStart || isClimax || chance(pedalProb)) {
         const planType = currentCadenceType || "authentic";
         let pedalDegree = 0;
-        
+
         if (isArcStart || isClimax) {
           pedalDegree = 0; // Force root for signposts
         } else {
@@ -737,23 +742,21 @@
         const pedalOct = Math.min(curRegister - 1, 0);
         const pedalIdx = pedalOct * 7 + pedalDegree;
         let pedalFreq = getScaleNote(baseFreq, pedalIdx, circlePosition, isMinor);
-        
+
         if (isArcStart) {
-           // FIXED: Force drone UP into cello range if it's too low (min 90Hz)
-           while (pedalFreq < 90) pedalFreq *= 2; 
-           while (pedalFreq > 220) pedalFreq *= 0.5;
+          while (pedalFreq < 90) pedalFreq *= 2;
+          while (pedalFreq > 220) pedalFreq *= 0.5;
         } else {
-           while (pedalFreq < 50) pedalFreq *= 2; 
-           while (pedalFreq > 110) pedalFreq *= 0.5;
+          while (pedalFreq < 50) pedalFreq *= 2;
+          while (pedalFreq > 110) pedalFreq *= 0.5;
         }
-        
+
         const t0 = Math.max(nextTimeA - 0.05, audioContext.currentTime);
         let pedalDur = atPhraseStart ? 16.0 : (atCadenceZone ? 12.0 : 7.0);
-        
-        if (isArcStart) pedalDur = 32.0; 
+
+        if (isArcStart) pedalDur = 32.0;
         if (isClimax) pedalDur = 24.0;
 
-        // FIXED: Higher Volume for Drones (0.35)
         const vol = (isArcStart || isClimax) ? 0.35 : 0.18;
 
         scheduleBassPedal(audioContext, masterGain, reverbSend, pedalFreq, t0, pedalDur, vol);
@@ -761,12 +764,12 @@
 
       // --- SCHEDULE MELODY (Unless in Solo Mode) ---
       if (!isDroneSolo) {
-          if (isCadence && arcPos === arcClimaxAt && phraseStep === 15) {
-              scheduleNote(audioContext, masterGain, reverbSend, freq * 2.0, nextTimeA, appliedDur, 0.35, pressure, tension);
-          }
-          scheduleNote(audioContext, masterGain, reverbSend, freq, nextTimeA, appliedDur, 0.4, pressure, tension);
+        if (isCadence && arcPos === arcClimaxAt && phraseStep === 15) {
+          scheduleNote(audioContext, masterGain, reverbSend, freq * 2.0, nextTimeA, appliedDur, 0.35, pressure, tension);
+        }
+        scheduleNote(audioContext, masterGain, reverbSend, freq, nextTimeA, appliedDur, 0.4, pressure, tension);
       }
-      
+
       notesSinceModulation++;
       if (clearPendingAfterNote) pendingLTResolution = false;
       nextTimeA += (1 / runDensity) * (0.95 + rand() * 0.1);
@@ -791,11 +794,14 @@
     sessionSnapshot = { seed, density: runDensity, motif: [...sessionMotif] };
     motifPos = 0;
 
+    // FIX: ensure arc state is properly initialized for this run
+    startNewArc();
+
     isPlaying = true;
     sessionStartTime = audioContext.currentTime;
     nextTimeA = audioContext.currentTime + 0.05;
     phraseStep = 0;
-    phraseCount = 0; 
+    phraseCount = 0;
     notesSinceModulation = 0;
     setButtonState("playing");
 
@@ -834,18 +840,18 @@
     const sampleRate = 44100;
     const offlineCtx = new OfflineAudioContext(2, sampleRate * exportDuration, sampleRate);
     const offlineMaster = offlineCtx.createGain(); offlineMaster.gain.value = 0.3; offlineMaster.connect(offlineCtx.destination);
-    
+
     const offlinePreDelay = offlineCtx.createDelay(0.1);
     offlinePreDelay.delayTime.value = 0.045;
-    const offlineReverb = offlineCtx.createConvolver(); 
+    const offlineReverb = offlineCtx.createConvolver();
     offlineReverb.buffer = createImpulseResponse(offlineCtx);
     const offlineReverbLP = offlineCtx.createBiquadFilter();
     offlineReverbLP.type = "lowpass";
     offlineReverbLP.frequency.value = 4200;
     offlineReverbLP.Q.value = 0.7;
-    const offlineSend = offlineCtx.createGain(); 
+    const offlineSend = offlineCtx.createGain();
     offlineSend.gain.value = 0.0;
-    const offlineReturn = offlineCtx.createGain(); 
+    const offlineReturn = offlineCtx.createGain();
     offlineReturn.gain.value = REVERB_RETURN_LEVEL;
 
     offlineSend.connect(offlinePreDelay);
@@ -856,7 +862,10 @@
 
     let localPhraseCount = 0;
     let localArcLen = 6;
-    let localArcPos = 0;
+
+    // FIX: export arcPos must match live behavior
+    let localArcPos = -1;
+
     let localArcClimaxAt = 4;
     let localTension = 0.0;
     let localLastCadence = "none";
@@ -865,14 +874,15 @@
     function localStartNewArc(){
       localArcLen = 4 + Math.floor(rand() * 5);
       localArcClimaxAt = Math.max(2, localArcLen - 2 - Math.floor(rand() * 2));
-      localArcPos = 0;
+      // FIX: -1 so first phrase increments to 0
+      localArcPos = -1;
       localTension = Math.max(0, Math.min(1, localTension * 0.4 + 0.05));
     }
-    localStartNewArc(); 
+    localStartNewArc();
 
-    const exportDensity = sessionSnapshot.density; 
-    const dummyMotif = generateSessionMotif(); 
-    const localMotif = [...sessionSnapshot.motif]; 
+    const exportDensity = sessionSnapshot.density;
+    const dummyMotif = generateSessionMotif();
+    const localMotif = [...sessionSnapshot.motif];
 
     // UPDATED: 100 Hz floor
     let baseFreq = Number(document.getElementById("tone")?.value ?? 110);
@@ -883,12 +893,12 @@
     let localCircle = 0; let localMinor = false; let localIdx = 0;
     let localTime = 0; let localModCount = 0; let localPhraseStep = 15;
     let localMotifPos = 0; let localPendingLT = false;
-    
+
     function localCadenceRepeatPenalty(type){ if (type !== localLastCadence) return 0.0; if (type === "authentic") return 0.30; return 0.18; }
     function localPickCadenceType(){
       const nearClimax = (localArcPos === localArcClimaxAt); const lateArc = (localArcPos >= localArcLen - 2);
       let w = { evaded:0.20, half:0.28, plagal:0.12, deceptive:0.18, authentic:0.22 };
-      
+
       if (localArcPos < localArcClimaxAt) { w.authentic = 0.05; w.evaded += 0.2; w.half += 0.1; }
       w.authentic += localTension * 0.25; w.deceptive += localTension * 0.10; w.evaded -= localTension * 0.18; w.half -= localTension * 0.08;
       if (nearClimax) { w.authentic+=0.25; w.deceptive+=0.10; w.evaded-=0.20; w.half-=0.10; }
@@ -909,211 +919,213 @@
         default:           return {pre:2,end:0,wantLT:false};
       }
     }
-    
+
     function localUpdateHarmony(durIn) {
-        const r = rand();
-        let pressure = Math.min(1.0, localModCount / 48.0);
-        if (localArcPos === localArcClimaxAt) pressure *= 2.5;
-        if (localArcPos <= 1) pressure *= 0.2;
-        if (localTension > 0.6) pressure *= 1.5;
-        pressure = Math.min(1.0, pressure);
-        const modChance = pressure * 0.35;
-        if (r < modChance) {
-            if (localArcPos === localArcClimaxAt) {
-                if (!localMinor && chance(0.7)) localMinor = true; else localCircle += (chance(0.6) ? 1 : -1); 
-            } else if (localArcPos >= localArcLen - 1) {
-                if (localCircle > 0) localCircle--; else if (localCircle < 0) localCircle++;
-                else if (localMinor && chance(0.6)) localMinor = false;
-            } else {
-               const isJourneyMode = (durIn === "infinite");
-               const dist = Math.abs(localCircle);
-               if (!isJourneyMode && dist > 3 && chance(0.8)) { localCircle += (localCircle > 0 ? -1 : 1); }
-               else { if (chance(0.3)) localMinor = !localMinor; else localCircle += (chance(0.5) ? 1 : -1); }
-            }
-            localModCount = 0;
+      const r = rand();
+      let pressure = Math.min(1.0, localModCount / 48.0);
+      if (localArcPos === localArcClimaxAt) pressure *= 2.5;
+      if (localArcPos <= 1) pressure *= 0.2;
+      if (localTension > 0.6) pressure *= 1.5;
+      pressure = Math.min(1.0, pressure);
+      const modChance = pressure * 0.35;
+      if (r < modChance) {
+        if (localArcPos === localArcClimaxAt) {
+          if (!localMinor && chance(0.7)) localMinor = true; else localCircle += (chance(0.6) ? 1 : -1);
+        } else if (localArcPos >= localArcLen - 1) {
+          if (localCircle > 0) localCircle--; else if (localCircle < 0) localCircle++;
+          else if (localMinor && chance(0.6)) localMinor = false;
+        } else {
+          const isJourneyMode = (durIn === "infinite");
+          const dist = Math.abs(localCircle);
+          if (!isJourneyMode && dist > 3 && chance(0.8)) { localCircle += (localCircle > 0 ? -1 : 1); }
+          else { if (chance(0.3)) localMinor = !localMinor; else localCircle += (chance(0.5) ? 1 : -1); }
         }
+        localModCount = 0;
+      }
     }
 
     while (localTime < exportDuration - 2.0) {
-       localPhraseStep = (localPhraseStep + 1) % 16;
-       if (localPhraseStep === 0) {
-         localPendingLT = false; localPhraseCount++; localArcPos = (localArcPos + 1);
-         if (localArcPos >= localArcLen) localStartNewArc();
-         localCadenceType = localPickCadenceType();
-       }
-       const isCadence = (localPhraseStep >= 13);
-       let pressure = Math.min(1.0, localModCount / 48.0);
-       if (localArcPos === localArcClimaxAt) pressure *= 2.5;
-       if (localArcPos <= 1) pressure *= 0.2;
-       if (localTension > 0.6) pressure *= 1.5;
-       pressure = Math.min(1.0, pressure);
-       localUpdateHarmony(durationInput);
+      localPhraseStep = (localPhraseStep + 1) % 16;
+      if (localPhraseStep === 0) {
+        localPendingLT = false;
+        localPhraseCount++;
+        localArcPos = (localArcPos + 1);
+        if (localArcPos >= localArcLen) localStartNewArc();
+        localCadenceType = localPickCadenceType();
+      }
+      const isCadence = (localPhraseStep >= 13);
+      let pressure = Math.min(1.0, localModCount / 48.0);
+      if (localArcPos === localArcClimaxAt) pressure *= 2.5;
+      if (localArcPos <= 1) pressure *= 0.2;
+      if (localTension > 0.6) pressure *= 1.5;
+      pressure = Math.min(1.0, pressure);
+      localUpdateHarmony(durationInput);
 
-       const normDensity = clamp01((exportDensity - 0.05) / 0.375);
-       const normTension = clamp01(localTension);
-       const normPressure = clamp01(pressure); 
-       
-       let targetSend = 0.65 - (0.25 * normDensity); 
-       targetSend += (normTension * 0.55);
-       targetSend -= (0.10 * normPressure); 
-       
-       if (localArcPos === localArcClimaxAt - 1) {
-           if (localPhraseStep === 13) {
-                targetSend = 0.0;
-                offlineSend.gain.cancelScheduledValues(localTime);
-                offlineSend.gain.setValueAtTime(offlineSend.gain.value, localTime);
-                offlineSend.gain.setTargetAtTime(0.0, localTime, 0.02);
-           } else if (localPhraseStep === 14) {
-               let base = 0.65 - (0.25 * normDensity) + (normTension * 0.55);
-               base -= (0.10 * normPressure);
-               base = Math.max(0, Math.min(0.95, base));
-               offlineSend.gain.setTargetAtTime(base, localTime, 1.5);
-           } else {
-               targetSend = Math.max(0, Math.min(0.95, targetSend));
-               offlineSend.gain.setTargetAtTime(targetSend, localTime, 0.5);
-           }
-       } else {
-           targetSend = Math.max(0, Math.min(0.95, targetSend));
-           offlineSend.gain.setTargetAtTime(targetSend, localTime, 0.5);
-       }
+      const normDensity = clamp01((exportDensity - 0.05) / 0.375);
+      const normTension = clamp01(localTension);
+      const normPressure = clamp01(pressure);
 
-       let appliedDur = noteDur;
-       let clearPendingAfterNote = false;
-       let slowProb = 0.0;
-       if (localPhraseStep === 15) slowProb = 0.85; else if (localPhraseStep === 0) slowProb = 0.25; else if (localPhraseStep === 14) slowProb = 0.35; else if (localPhraseStep === 13) slowProb = 0.20;
-       if (chance(slowProb)) appliedDur *= (1.20 + rand() * 0.20);
+      let targetSend = 0.65 - (0.25 * normDensity);
+      targetSend += (normTension * 0.55);
+      targetSend -= (0.10 * normPressure);
 
-       if (isCadence) {
-         const targets = [0, 2, 4];
-         const currentOctave = Math.floor(localIdx / 7) * 7;
-         let deg = localIdx - currentOctave;
-         deg = ((deg % 7) + 7) % 7;
-         let best = targets[0];
-         let bestD = circDist(deg, best);
-         for (let i = 1; i < targets.length; i++) {
-           const t = targets[i]; const d = circDist(deg, t);
-           if (d < bestD || (d === bestD && chance(0.5))) { best = t; bestD = d; }
-         }
-         const landProb = (localPhraseStep >= 15) ? 0.85 : 0.55;
-         let targetDeg = best;
-         if (!chance(landProb)) {
-           const dir = chance(0.65) ? -1 : 1;
-           targetDeg = (targetDeg + dir + 7) % 7;
-         }
-         let delta = targetDeg - deg;
-         if (delta > 3) delta -= 7; if (delta < -3) delta += 7;
-         if (Math.abs(delta) === 3) delta = chance(0.5) ? 3 : -3;
-         else if (delta === 0 && localPhraseStep <= 14 && chance(0.18)) delta = chance(0.5) ? 1 : -1;
-         localIdx = currentOctave + deg + delta;
+      if (localArcPos === localArcClimaxAt - 1) {
+        if (localPhraseStep === 13) {
+          targetSend = 0.0;
+          offlineSend.gain.cancelScheduledValues(localTime);
+          offlineSend.gain.setValueAtTime(offlineSend.gain.value, localTime);
+          offlineSend.gain.setTargetAtTime(0.0, localTime, 0.02);
+        } else if (localPhraseStep === 14) {
+          let base = 0.65 - (0.25 * normDensity) + (normTension * 0.55);
+          base -= (0.10 * normPressure);
+          base = Math.max(0, Math.min(0.95, base));
+          offlineSend.gain.setTargetAtTime(base, localTime, 1.5);
+        } else {
+          targetSend = Math.max(0, Math.min(0.95, targetSend));
+          offlineSend.gain.setTargetAtTime(targetSend, localTime, 0.5);
+        }
+      } else {
+        targetSend = Math.max(0, Math.min(0.95, targetSend));
+        offlineSend.gain.setTargetAtTime(targetSend, localTime, 0.5);
+      }
 
-         const ct = localCadenceType;
-         const targ = localCadenceTargets(ct);
-         if (localPhraseStep === 14) {
-            const forcePreProb = (ct === "evaded") ? 0.35 : (ct === "half") ? 0.45 : (ct === "plagal") ? 0.50 : 0.65;
-            if (chance(forcePreProb)) {
-                const targetDegPre = targ.pre;
-                const curOct = Math.floor(localIdx / 7) * 7;
-                const curDeg = ((localIdx - curOct) % 7 + 7) % 7;
-                let deltaPre = targetDegPre - curDeg;
-                if (deltaPre > 3) deltaPre -= 7; if (deltaPre < -3) deltaPre += 7;
-                localIdx += deltaPre;
-                localPendingLT = !!targ.wantLT;
-            }
-         }
-         if (localPhraseStep === 15) {
-            const baseProb = (ct === "evaded") ? (0.35 + localTension * 0.20) : (ct === "half") ? 0.78 : (ct === "plagal") ? 0.74 : (ct === "deceptive") ? 0.86 : 0.90;
-            const finalProb = localPendingLT ? Math.min(0.98, baseProb + 0.06) : baseProb;
-            if (chance(finalProb)) {
-                const targetDegEnd = targ.end;
-                const curOct = Math.floor(localIdx / 7) * 7;
-                const curDeg = ((localIdx - curOct) % 7 + 7) % 7;
-                let deltaEnd = targetDegEnd - curDeg;
-                if (deltaEnd > 3) deltaEnd -= 7; if (deltaEnd < -3) deltaEnd += 7;
-                localIdx += deltaEnd;
-            }
-            if (ct === "evaded") localTension = Math.max(0,Math.min(1, localTension + 0.18));
-            else if (ct === "half") localTension = Math.max(0,Math.min(1, localTension + 0.08));
-            else if (ct === "deceptive") localTension = Math.max(0,Math.min(1, localTension + 0.06));
-            else if (ct === "plagal") localTension = Math.max(0,Math.min(1, localTension - 0.10));
-            else if (ct === "authentic") localTension = Math.max(0,Math.min(1, localTension - 0.22));
-            localLastCadence = ct;
-            clearPendingAfterNote = true;
-         }
-       } else {
-         const useMotif = chance(0.25);
-         if (useMotif && localMotif.length > 0) {
-           const motifInterval = localMotif[localMotifPos];
-           const currentOctave = Math.floor(localIdx / 7) * 7;
-           localIdx = currentOctave + motifInterval;
-           localMotifPos = (localMotifPos + 1) % localMotif.length;
-         } else {
-           const r = rand();
-           let shift = 0;
-           if (r < 0.50) shift = 1; else if (r < 0.82) shift = -1; else shift = chance(0.65) ? 2 : -2;
-           localIdx += shift;
-         }
-       }
-       if (!isCadence) {
-           const anchor = 1; const reg = Math.floor(localIdx / 7);
-           if (reg < anchor && chance(0.22)) localIdx += 1; else if (reg > anchor && chance(0.22)) localIdx -= 1;
-       }
-       if (localIdx > 10) localIdx = 10; if (localIdx < -8) localIdx = -8;
+      let appliedDur = noteDur;
+      let clearPendingAfterNote = false;
+      let slowProb = 0.0;
+      if (localPhraseStep === 15) slowProb = 0.85; else if (localPhraseStep === 0) slowProb = 0.25; else if (localPhraseStep === 14) slowProb = 0.35; else if (localPhraseStep === 13) slowProb = 0.20;
+      if (chance(slowProb)) appliedDur *= (1.20 + rand() * 0.20);
 
-       const degNow = ((localIdx - Math.floor(localIdx / 7) * 7) % 7 + 7) % 7;
-       const wantLT2 = localCadenceTargets(localCadenceType).wantLT; 
-       const raiseLT = isCadence && wantLT2 && degNow === 6 && (localPhraseStep === 13 || localPhraseStep === 14 || localPendingLT);
-       let freq = getScaleNote(baseFreq, localIdx, localCircle, localMinor, { raiseLeadingTone: raiseLT });
+      if (isCadence) {
+        const targets = [0, 2, 4];
+        const currentOctave = Math.floor(localIdx / 7) * 7;
+        let deg = localIdx - currentOctave;
+        deg = ((deg % 7) + 7) % 7;
+        let best = targets[0];
+        let bestD = circDist(deg, best);
+        for (let i = 1; i < targets.length; i++) {
+          const t = targets[i]; const d = circDist(deg, t);
+          if (d < bestD || (d === bestD && chance(0.5))) { best = t; bestD = d; }
+        }
+        const landProb = (localPhraseStep >= 15) ? 0.85 : 0.55;
+        let targetDeg = best;
+        if (!chance(landProb)) {
+          const dir = chance(0.65) ? -1 : 1;
+          targetDeg = (targetDeg + dir + 7) % 7;
+        }
+        let delta = targetDeg - deg;
+        if (delta > 3) delta -= 7; if (delta < -3) delta += 7;
+        if (Math.abs(delta) === 3) delta = chance(0.5) ? 3 : -3;
+        else if (delta === 0 && localPhraseStep <= 14 && chance(0.18)) delta = chance(0.5) ? 1 : -1;
+        localIdx = currentOctave + deg + delta;
 
-       // --- DRONE LOGIC FOR EXPORT ---
-       const isArcStart = (localArcPos === 0 && localPhraseStep === 0);
-       const isClimax = (localArcPos === localArcClimaxAt && localPhraseStep === 0);
-       const isDroneSolo = (localArcPos === 0 && localPhraseStep < 12 && localPhraseCount > 0); 
+        const ct = localCadenceType;
+        const targ = localCadenceTargets(ct);
+        if (localPhraseStep === 14) {
+          const forcePreProb = (ct === "evaded") ? 0.35 : (ct === "half") ? 0.45 : (ct === "plagal") ? 0.50 : 0.65;
+          if (chance(forcePreProb)) {
+            const targetDegPre = targ.pre;
+            const curOct = Math.floor(localIdx / 7) * 7;
+            const curDeg = ((localIdx - curOct) % 7 + 7) % 7;
+            let deltaPre = targetDegPre - curDeg;
+            if (deltaPre > 3) deltaPre -= 7; if (deltaPre < -3) deltaPre += 7;
+            localIdx += deltaPre;
+            localPendingLT = !!targ.wantLT;
+          }
+        }
+        if (localPhraseStep === 15) {
+          const baseProb = (ct === "evaded") ? (0.35 + localTension * 0.20) : (ct === "half") ? 0.78 : (ct === "plagal") ? 0.74 : (ct === "deceptive") ? 0.86 : 0.90;
+          const finalProb = localPendingLT ? Math.min(0.98, baseProb + 0.06) : baseProb;
+          if (chance(finalProb)) {
+            const targetDegEnd = targ.end;
+            const curOct = Math.floor(localIdx / 7) * 7;
+            const curDeg = ((localIdx - curOct) % 7 + 7) % 7;
+            let deltaEnd = targetDegEnd - curDeg;
+            if (deltaEnd > 3) deltaEnd -= 7; if (deltaEnd < -3) deltaEnd += 7;
+            localIdx += deltaEnd;
+          }
+          if (ct === "evaded") localTension = Math.max(0,Math.min(1, localTension + 0.18));
+          else if (ct === "half") localTension = Math.max(0,Math.min(1, localTension + 0.08));
+          else if (ct === "deceptive") localTension = Math.max(0,Math.min(1, localTension + 0.06));
+          else if (ct === "plagal") localTension = Math.max(0,Math.min(1, localTension - 0.10));
+          else if (ct === "authentic") localTension = Math.max(0,Math.min(1, localTension - 0.22));
+          localLastCadence = ct;
+          clearPendingAfterNote = true;
+        }
+      } else {
+        const useMotif = chance(0.25);
+        if (useMotif && localMotif.length > 0) {
+          const motifInterval = localMotif[localMotifPos];
+          const currentOctave = Math.floor(localIdx / 7) * 7;
+          localIdx = currentOctave + motifInterval;
+          localMotifPos = (localMotifPos + 1) % localMotif.length;
+        } else {
+          const r = rand();
+          let shift = 0;
+          if (r < 0.50) shift = 1; else if (r < 0.82) shift = -1; else shift = chance(0.65) ? 2 : -2;
+          localIdx += shift;
+        }
+      }
+      if (!isCadence) {
+        const anchor = 1; const reg = Math.floor(localIdx / 7);
+        if (reg < anchor && chance(0.22)) localIdx += 1; else if (reg > anchor && chance(0.22)) localIdx -= 1;
+      }
+      if (localIdx > 10) localIdx = 10; if (localIdx < -8) localIdx = -8;
 
-       const atPhraseStart = (localPhraseStep === 0 || localPhraseStep === 1);
-       const atCadenceZone = (localPhraseStep >= 13);
-       let pedalProb = 0.0;
-       if (atPhraseStart) pedalProb = 0.16;
-       else if (atCadenceZone) pedalProb = 0.10 + (localTension * 0.05);
-       else pedalProb = 0.03;
-       const curRegister = Math.floor(localIdx / 7);
-       if (curRegister >= 2) pedalProb *= 0.35;
+      const degNow = ((localIdx - Math.floor(localIdx / 7) * 7) % 7 + 7) % 7;
+      const wantLT2 = localCadenceTargets(localCadenceType).wantLT;
+      const raiseLT = isCadence && wantLT2 && degNow === 6 && (localPhraseStep === 13 || localPhraseStep === 14 || localPendingLT);
+      let freq = getScaleNote(baseFreq, localIdx, localCircle, localMinor, { raiseLeadingTone: raiseLT });
 
-       if (isArcStart || isClimax || chance(pedalProb)) {
-         const planType = localCadenceType || "authentic";
-         let pedalDegree = 0;
-         if (isArcStart || isClimax) {
-           pedalDegree = 0;
-         } else {
-           if (planType === "half") pedalDegree = 4;
-           else if (planType === "deceptive") pedalDegree = chance(0.6) ? 0 : 5;
-         }
-         const pedalOct = Math.min(curRegister - 1, 0);
-         const pedalIdx = pedalOct * 7 + pedalDegree;
-         let pedalFreq = getScaleNote(baseFreq, pedalIdx, localCircle, localMinor);
-         
-         if (isArcStart) { while (pedalFreq < 90) pedalFreq *= 2; while (pedalFreq > 220) pedalFreq *= 0.5; }
-         else { while (pedalFreq < 50) pedalFreq *= 2; while (pedalFreq > 110) pedalFreq *= 0.5; }
-         
-         const t0 = Math.max(localTime - 0.05, 0);
-         let pedalDur = atPhraseStart ? 16.0 : (atCadenceZone ? 12.0 : 7.0);
-         if (isArcStart) pedalDur = 32.0; 
-         if (isClimax) pedalDur = 24.0;
-         const vol = (isArcStart || isClimax) ? 0.35 : 0.18;
-         
-         scheduleBassPedal(offlineCtx, offlineMaster, offlineSend, pedalFreq, t0, pedalDur, vol);
-       }
+      // --- DRONE LOGIC FOR EXPORT ---
+      const isArcStart = (localArcPos === 0 && localPhraseStep === 0);
+      const isClimax = (localArcPos === localArcClimaxAt && localPhraseStep === 0);
+      const isDroneSolo = (localArcPos === 0 && localPhraseStep < 12 && localPhraseCount > 0);
 
-       // --- MELODY LOGIC (Export Solo) ---
-       if (!isDroneSolo) {
-           if (isCadence && localArcPos === localArcClimaxAt && localPhraseStep === 15) {
-              scheduleNote(offlineCtx, offlineMaster, offlineSend, freq * 2.0, localTime, appliedDur, 0.35, pressure, localTension);
-           }
-           scheduleNote(offlineCtx, offlineMaster, offlineSend, freq, localTime, appliedDur, 0.4, pressure, localTension);
-       }
+      const atPhraseStart = (localPhraseStep === 0 || localPhraseStep === 1);
+      const atCadenceZone = (localPhraseStep >= 13);
+      let pedalProb = 0.0;
+      if (atPhraseStart) pedalProb = 0.16;
+      else if (atCadenceZone) pedalProb = 0.10 + (localTension * 0.05);
+      else pedalProb = 0.03;
+      const curRegister = Math.floor(localIdx / 7);
+      if (curRegister >= 2) pedalProb *= 0.35;
 
-       localModCount++;
-       if (clearPendingAfterNote) localPendingLT = false;
-       localTime += (1 / exportDensity) * (0.95 + rand() * 0.1);
+      if (isArcStart || isClimax || chance(pedalProb)) {
+        const planType = localCadenceType || "authentic";
+        let pedalDegree = 0;
+        if (isArcStart || isClimax) {
+          pedalDegree = 0;
+        } else {
+          if (planType === "half") pedalDegree = 4;
+          else if (planType === "deceptive") pedalDegree = chance(0.6) ? 0 : 5;
+        }
+        const pedalOct = Math.min(curRegister - 1, 0);
+        const pedalIdx = pedalOct * 7 + pedalDegree;
+        let pedalFreq = getScaleNote(baseFreq, pedalIdx, localCircle, localMinor);
+
+        if (isArcStart) { while (pedalFreq < 90) pedalFreq *= 2; while (pedalFreq > 220) pedalFreq *= 0.5; }
+        else { while (pedalFreq < 50) pedalFreq *= 2; while (pedalFreq > 110) pedalFreq *= 0.5; }
+
+        const t0 = Math.max(localTime - 0.05, 0);
+        let pedalDur = atPhraseStart ? 16.0 : (atCadenceZone ? 12.0 : 7.0);
+        if (isArcStart) pedalDur = 32.0;
+        if (isClimax) pedalDur = 24.0;
+        const vol = (isArcStart || isClimax) ? 0.35 : 0.18;
+
+        scheduleBassPedal(offlineCtx, offlineMaster, offlineSend, pedalFreq, t0, pedalDur, vol);
+      }
+
+      // --- MELODY LOGIC (Export Solo) ---
+      if (!isDroneSolo) {
+        if (isCadence && localArcPos === localArcClimaxAt && localPhraseStep === 15) {
+          scheduleNote(offlineCtx, offlineMaster, offlineSend, freq * 2.0, localTime, appliedDur, 0.35, pressure, localTension);
+        }
+        scheduleNote(offlineCtx, offlineMaster, offlineSend, freq, localTime, appliedDur, 0.4, pressure, localTension);
+      }
+
+      localModCount++;
+      if (clearPendingAfterNote) localPendingLT = false;
+      localTime += (1 / exportDensity) * (0.95 + rand() * 0.1);
     }
 
     const renderedBuffer = await offlineCtx.startRendering();
@@ -1146,27 +1158,31 @@
   }
 
   function setupKeyboardShortcuts() {
-    document.addEventListener('keydown', (e) => { 
-      if (e.key.toLowerCase() === 'r') toggleRecording(); 
+    document.addEventListener('keydown', (e) => {
+      if (e.key.toLowerCase() === 'r') toggleRecording();
     });
   }
 
   document.addEventListener("DOMContentLoaded", () => {
     const playBtn = document.getElementById("playNow");
     const stopBtn = document.getElementById("stop");
-    
+
     if (playBtn) playBtn.addEventListener("click", startFromUI);
     if (stopBtn) stopBtn.addEventListener("click", stopAllManual);
 
     applyControls(loadState());
-    
+
     document.getElementById("tone")?.addEventListener("input", (e) => {
-        document.getElementById("hzReadout").textContent = e.target.value;
-        saveState(readControls());
+      document.getElementById("hzReadout").textContent = e.target.value;
+      saveState(readControls());
     });
     document.getElementById("songDuration")?.addEventListener("change", () => saveState(readControls()));
     const recBtn = document.getElementById("record");
     if (recBtn) recBtn.onclick = toggleRecording;
+
+    // Hook export if you have a button with id="export"
+    const exportBtn = document.getElementById("export");
+    if (exportBtn) exportBtn.onclick = renderWavExport;
 
     if (isPopoutMode()) {
       document.body.classList.add("popout");
