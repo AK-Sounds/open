@@ -192,15 +192,11 @@
   // =========================
   let audioContext = null;
   let masterGain = null;
-  
-  let reverbNode = null;
-  let reverbPreDelay = null;
-  let reverbSend = null;   
-  let reverbReturn = null; 
-  let reverbLP = null; 
-  
+  let reverbNode = null, reverbPreDelay = null;
+  let reverbSend = null, reverbReturn = null, reverbLP = null;
   let streamDest = null;
-  const REVERB_RETURN_LEVEL = 0.80; 
+
+  const REVERB_RETURN_LEVEL = 0.80;
 
   let isPlaying = false;
   let isEndingNaturally = false;
@@ -229,9 +225,7 @@
   let currentCadenceType = "none";
 
   function createImpulseResponse(ctx) {
-    const duration = 10.0; 
-    const decay = 2.8; 
-    const rate = ctx.sampleRate;
+    const duration = 10.0, decay = 2.8, rate = ctx.sampleRate;
     const length = Math.floor(rate * duration);
     const impulse = ctx.createBuffer(2, length, rate);
     const r = rngStream(0xC0FFEE);
@@ -252,8 +246,8 @@
   function clamp01(x){ return Math.max(0, Math.min(1, x)); }
 
   function startNewArc() {
-    arcLen = 4 + Math.floor(rand() * 5); 
-    arcClimaxAt = Math.max(2, arcLen - 2 - Math.floor(rand() * 2)); 
+    arcLen = 4 + Math.floor(rand() * 5);
+    arcClimaxAt = Math.max(2, arcLen - 2 - Math.floor(rand() * 2));
     arcPos = 0;
     tension = clamp01(tension * 0.4 + 0.05);
   }
@@ -403,7 +397,7 @@
     });
   }
 
-  // --- BASS PEDAL (With FM Swell) ---
+  // --- UPDATED BASS PEDAL (Polished FM) ---
   function scheduleBassPedal(ctx, destination, wetSend, freq, time, duration, volume) {
     const isDrone = (duration > 20.0); 
 
@@ -417,26 +411,31 @@
     modulator.type = 'sine';
 
     if (isDrone) {
+      // DRONE: Fixed Octave (2.0) + Micro-detune for "shimmer" not "wobble"
       carrier.frequency.value = freq;
       modulator.frequency.value = freq * 2.0; 
+      // ±6 cents detune for chorus effect
       modulator.detune.value = (rand() - 0.5) * 6; 
     } else {
+      // PEDAL: Gritty
       carrier.frequency.value = freq + (rand() - 0.5) * 0.6;
       modulator.frequency.value = freq * (1.25 + rand() * 0.25);
     }
 
     if (isDrone) {
+      // FM BLOOM: Reduced intensity (0.6 max) to prevent pitch siren
       modGain.gain.setValueAtTime(0, time);
       modGain.gain.linearRampToValueAtTime(freq * 0.6, time + (duration * 0.5));
       modGain.gain.linearRampToValueAtTime(0, time + duration);
     } else {
+      // PLUCK
       modGain.gain.setValueAtTime(freq * (0.35 + rand() * 0.25), time);
       modGain.gain.exponentialRampToValueAtTime(freq * 0.12, time + Math.max(0.5, duration));
     }
 
     ampGain.gain.setValueAtTime(0.0001, time);
     if (isDrone) {
-        ampGain.gain.exponentialRampToValueAtTime(volume, time + 4.0); 
+        ampGain.gain.exponentialRampToValueAtTime(volume, time + 4.0); // Slow attack
     } else {
         ampGain.gain.exponentialRampToValueAtTime(volume, time + 0.15);
     }
@@ -444,7 +443,7 @@
 
     lp.type = 'lowpass'; 
     if (isDrone) {
-        lp.frequency.setValueAtTime(350, time); 
+        lp.frequency.setValueAtTime(350, time); // Open up slightly for harmonics
         lp.Q.value = 0.5; 
     } else {
         lp.frequency.setValueAtTime(220 + rand() * 80, time); 
@@ -529,14 +528,14 @@
       if (elapsed >= targetDuration) isApproachingEnd = true;
     }
     
-    // Range: 100-200
+    // UPDATED: 100 Hz floor
     let baseFreq = Number(document.getElementById("tone")?.value ?? 110);
     if (!Number.isFinite(baseFreq)) baseFreq = 110;
     baseFreq = Math.max(100, Math.min(200, baseFreq));
     
     const noteDur = (1 / runDensity) * 2.5;
 
-    // --- CONTINUOUS SPACE ---
+    // --- CONTINUOUS SPACE (Lazy Dynamics) ---
     if (reverbSend && arcPos !== arcClimaxAt - 1) {
         let tickPressure = Math.min(1.0, notesSinceModulation / 48.0);
         if (arcPos === arcClimaxAt) tickPressure *= 2.5;
@@ -587,7 +586,7 @@
       }
       const isCadence = (phraseStep >= 13);
 
-      // --- THE SHADOW ---
+      // --- THE SHADOW & THE EXHALE ---
       if (reverbSend && arcPos === arcClimaxAt - 1) {
           if (phraseStep === 13) {
               reverbSend.gain.cancelScheduledValues(nextTimeA);
@@ -611,7 +610,7 @@
       else if (phraseStep === 13) slowProb = 0.20;
       if (chance(slowProb)) appliedDur *= (1.20 + rand() * 0.20);
 
-      // --- MELODY LOGIC (With Drone Solo) ---
+      // --- MELODY LOGIC (With Drone Solo Check) ---
       if (isCadence) {
           const targets = [0, 2, 4];
           const currentOctave = Math.floor(patternIdxA / 7) * 7;
@@ -744,7 +743,7 @@
         scheduleBassPedal(audioContext, masterGain, reverbSend, pedalFreq, t0, pedalDur, vol);
       }
 
-      // --- MELODY SCHEDULING ---
+      // --- SCHEDULE MELODY (Unless in Solo Mode) ---
       if (!isDroneSolo) {
           if (isCadence && arcPos === arcClimaxAt && phraseStep === 15) {
               scheduleNote(audioContext, masterGain, reverbSend, freq * 2.0, nextTimeA, appliedDur, 0.35, pressure, tension);
@@ -762,12 +761,14 @@
     initAudio();
     if (audioContext.state === "suspended") audioContext.resume?.();
 
+    // UPDATED: Gain Reset Logic
     if (masterGain && audioContext) {
       const t = audioContext.currentTime;
       masterGain.gain.cancelScheduledValues(t);
       masterGain.gain.setValueAtTime(0.3, t);
     }
 
+    // UPDATED: ALWAYS New Seed on Play
     const seed = (crypto?.getRandomValues ? crypto.getRandomValues(new Uint32Array(1))[0] : Math.floor(Math.random() * 2 ** 32)) >>> 0;
     setSeed(seed);
     runDensity = 0.05 + rand() * 0.375;
@@ -776,8 +777,6 @@
     motifPos = 0;
 
     isPlaying = true;
-    isEndingNaturally = false;
-    isApproachingEnd = false;
     sessionStartTime = audioContext.currentTime;
     nextTimeA = audioContext.currentTime + 0.05;
     phraseStep = 0;
@@ -788,6 +787,7 @@
     timerInterval = setInterval(scheduler, 50);
   }
 
+  // UPDATED: Only fades down, does NOT schedule fade up
   function stopAllManual() {
     isPlaying = false;
     isEndingNaturally = false;
@@ -859,7 +859,7 @@
     const dummyMotif = generateSessionMotif(); 
     const localMotif = [...sessionSnapshot.motif]; 
 
-    // Range: 100-200
+    // UPDATED: 100 Hz floor
     let baseFreq = Number(document.getElementById("tone")?.value ?? 110);
     if (!Number.isFinite(baseFreq)) baseFreq = 110;
     baseFreq = Math.max(100, Math.min(200, baseFreq));
