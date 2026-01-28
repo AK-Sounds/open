@@ -1,4 +1,4 @@
-/* style.css — Open (v17 Pro) Final Parity + Tighter Footer */
+/* style.css — Open (v130 Logic) */
 
 * { box-sizing: border-box; }
 
@@ -18,13 +18,12 @@ main {
 }
 
 /* =========================
-   TEXT PARITY: TITLE & HERO BUTTON
+   TEXT PARITY
    ========================= */
 #popoutTitle, .secondary-btn {
   font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
   text-transform: uppercase;
   font-weight: normal;
-  
   font-size: 1.5rem;         
   letter-spacing: 1.8rem;    
   text-indent: 1.8rem;
@@ -41,26 +40,45 @@ main {
 }
 
 /* =========================
-   MAIN PAGE HERO BUTTON (Open)
+   BUTTON STYLES (INVERTED LOGIC)
    ========================= */
-.secondary-btn {
-  /* Default: White Background, Black Text */
-  background-color: #fff !important;
-  color: #000 !important;
+
+/* DEFAULT STATE: Black Background, White Text */
+button, .secondary-btn {
+  background-color: #000 !important;
+  color: #fff !important;
   border: 1px solid #000;
-  padding: 2rem 0;
+  padding: 2rem 0; /* Tall for Open button, overridden for controls */
   width: 100%;
   display: block;
   text-align: center;
   cursor: pointer;
   transition: background-color 0.1s ease, color 0.1s ease;
+  
+  /* Text Styles */
+  text-transform: uppercase;
+  font-weight: normal;
+  letter-spacing: 0.2rem;
+  text-indent: 0.2rem;
 }
 
-/* Active/Hover: Black Background, White Text */
+/* ACTIVE / FILLED STATE: White Background, Black Text */
+/* This applies to:
+   1. The .filled class (Active Play/Stop)
+   2. Hover/Active states on the Open button
+*/
+button.filled,
 .secondary-btn:hover,
 .secondary-btn:active {
-  background-color: #000 !important;
-  color: #fff !important;
+  background-color: #fff !important;
+  color: #000 !important;
+}
+
+/* Reset height for standard player buttons */
+.form-actions button {
+  padding: 0.5rem;
+  font-size: 1rem;
+  flex: 1;
 }
 
 /* =========================
@@ -119,7 +137,7 @@ video {
   margin-bottom: 1.5rem;
 }
 
-input, select, button {
+input, select {
   background-color: #fff !important;
   color: #000 !important;
   border: 1px solid #000;
@@ -134,23 +152,6 @@ input, select, button {
   display: flex;
   gap: 1rem;
   margin-top: 2rem;
-}
-
-/* PLAYER BUTTONS */
-button {
-  flex: 1;
-  cursor: pointer;
-  text-transform: uppercase;
-  font-weight: normal;
-  letter-spacing: 0.2rem;
-  text-indent: 0.2rem;
-  transition: background-color 0.1s ease, color 0.1s ease;
-}
-
-/* The ".filled" class turns the button Black (Active State) */
-button.filled {
-  background-color: #000 !important;
-  color: #fff !important;
 }
 
 /* =========================
@@ -173,23 +174,17 @@ button.filled {
 /* =========================
    MODE SWITCHING
    ========================= */
-/* Hide player controls by default */
-#controls, #credits, .separator, #popoutTitle { 
-  display: none; 
-}
+#controls, #credits, .separator, #popoutTitle { display: none; }
 
-/* Show player controls in popout/mobile mode */
 body.popout #controls, body.popout #credits, body.popout .separator, body.popout #popoutTitle,
 body.mobile-player #controls, body.mobile-player #credits, body.mobile-player .separator, body.mobile-player #popoutTitle {
   display: block;
 }
 
-/* Hide launch button in popout/mobile mode */
 body.popout #launchOnly, body.mobile-player #launchOnly {
   display: none;
 }
 
-/* Tighter margins for popout window */
 body.popout main {
   margin: 2rem auto;
   max-width: 460px;
