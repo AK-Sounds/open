@@ -1,14 +1,16 @@
 (() => {
-  const STATE_KEY = "open_player_settings_v148_robust";
+  const STATE_KEY = "open_player_settings_v149_harmonic_thirds_80hz";
 
   // =========================
-  // NEW: DRONE TUNING CONTROLS
+  // MUSICAL TARGETS (YOUR REQUESTS)
   // =========================
-  const DRONE_GAIN_MULT = 0.70;      // 30% quieter (requested)
-  const FLOOR_TARGET_HZ = 80;        // frequently floor melody + drone to ~80Hz
-  const FLOOR_PROB = 0.75;           // "frequently" (tunable)
-  const FLOOR_MIN_HZ = 70;           // don't over-push; keeps it musical
-  const FLOOR_MAX_HZ = 100;          // clamp for safety
+  const FREQ_FLOOR = 80;          // floor for melody + drone
+  const DRONE_GAIN_MULT = 0.70;   // 30% quieter
+
+  function applyFreqFloor(freq) {
+    while (freq < FREQ_FLOOR) freq *= 2;
+    return freq;
+  }
 
   // =========================
   // VIEW & STATE
@@ -28,7 +30,6 @@
   }
 
   function launchPlayer() {
-    // Mobile: use in-page "popout" mode (hash)
     if (isMobileDevice()) {
       document.body.classList.add("mobile-player");
       window.location.hash = "#popout";
@@ -37,7 +38,6 @@
       return;
     }
 
-    // Desktop: centered popup window
     const width = 500;
     const height = 680;
     const left = Math.max(0, (window.screen.width / 2) - (width / 2));
@@ -91,10 +91,8 @@
     const stopBtn = document.getElementById("stop");
     const toneInput = document.getElementById("tone");
 
-    // "Filled" (White) = Active State
     if (playBtn) playBtn.classList.toggle("filled", state === "playing");
     if (stopBtn) stopBtn.classList.toggle("filled", state !== "playing");
-
     if (toneInput) toneInput.disabled = (state === "playing");
   }
 
@@ -363,6 +361,8 @@
   }
 
   function scheduleNote(ctx, destination, wetSend, freq, time, duration, volume, instability = 0, tensionAmt = 0) {
+    freq = applyFreqFloor(freq);
+
     const numVoices = 2 + Math.floor(rand() * 2);
     let totalAmp = 0;
 
@@ -390,7 +390,6 @@
       const modGain = ctx.createGain();
       const ampGain = ctx.createGain();
 
-      // WARMTH FILTER: Cuts digital fizz above 6kHz
       const toneFilter = ctx.createBiquadFilter();
       toneFilter.type = "lowpass";
       toneFilter.frequency.value = Math.min(freq * 3.5, 6000);
@@ -428,6 +427,9 @@
 
   // --- BASS PEDAL: Warm Drone (1.8 FM, 650Hz Filter) ---
   function scheduleBassPedal(ctx, destination, wetSend, freq, time, duration, volume) {
+    freq = applyFreqFloor(freq);
+    volume *= DRONE_GAIN_MULT;
+
     const isDrone = (duration > 20.0);
 
     const carrier = ctx.createOscillator();
@@ -502,61 +504,7 @@
     }
 
     const noteValue = rootOffset + intervals[degree] + (octave * 12);
-    return baseFreq * Math.pow(2, noteValue / 12);
-  }
-
-  // =========================
-  // NEW: helper to "frequently floor" to ~80Hz
-  // =========================
-  function maybeFloorTo80(freq) {
-    if (!Number.isFinite(freq) || freq <= 0) return freq;
-    if (!chance(FLOOR_PROB)) return freq;
-
-    // Bring into a near-bass register around the target by octave shifting
-    let f = freq;
-    while (f < FLOOR_TARGET_HZ) f *= 2;
-    while (f >= FLOOR_TARGET_HZ * 2) f *= 0.5;
-
-    // Soft clamp: keep in a musically safe range
-    if (f < FLOOR_MIN_HZ) f = FLOOR_MIN_HZ;
-    if (f > FLOOR_MAX_HZ) f = FLOOR_MAX_HZ;
-    return f;
-  }
-
-  // =========================
-  // NEW: Drone selection limited to Root + (Major/Minor 3rd) when it "fits"
-  // =========================
-  function pickDroneDegree(planType, minorMode) {
-    // Root is always "safe"
-    if (planType === "half") return 4;          // V pedal for half cadence
-    if (planType === "authentic" || planType === "plagal") return 0;
-
-    // For deceptive/evaded: allow chord-tone bass (still conservative)
-    if (planType === "deceptive") return chance(0.65) ? 0 : 5; // I or vi
-    if (planType === "evaded") return chance(0.75) ? 0 : 2;    // I or iii-ish landing (scale degree 3)
-    return 0;
-  }
-
-  function pickDroneHarmonyToneHz(baseFreq, pedalIdx, circlePos, minorMode, planType) {
-    // pedalIdx already points to a scale degree and octave.
-    // We build an optional *harmony tone* (third) above the pedal, only if it makes sense:
-    // - In major mode: allow major 3rd above I pedal (degree 0) primarily.
-    // - In minor mode: allow minor 3rd above i pedal (degree 0) primarily.
-    // - For V pedal: third above V is scale degree 6 in major (leading tone) / in minor it's 6 too (but can be altered).
-    // We'll be conservative: only add third above I/i pedals and only outside cadence zone.
-    const pedalDegree = ((pedalIdx % 7) + 7) % 7;
-    const inCadentialPlan = (planType === "half" || planType === "authentic" || planType === "plagal");
-    const allowThird = (!inCadentialPlan) || chance(0.25); // mostly avoid in strict cadences
-
-    if (!allowThird) return null;
-    if (pedalDegree !== 0) return null; // only add third above tonic pedal
-
-    const thirdDegree = minorMode ? 2 : 2; // scale degree index for 3rd is 2 (0,1,2)
-    const thirdIdx = (Math.floor(pedalIdx / 7) * 7) + thirdDegree;
-
-    let thirdHz = getScaleNote(baseFreq, thirdIdx, circlePos, minorMode);
-    thirdHz = maybeFloorTo80(thirdHz); // also eligible for the 80Hz "flooring" idea (gives that bassy blend)
-    return thirdHz;
+    return applyFreqFloor(baseFreq * Math.pow(2, noteValue / 12));
   }
 
   function generateSessionMotif() {
@@ -588,7 +536,7 @@
         else if (isMinor && chance(0.6)) isMinor = false;
       } else {
         const isJourneyMode = (durationInput === "infinite");
-        const d = Math.abs(circlePosition);
+        const d = Math.abs(circlePosition); // FIXED (was localCircle)
         if (!isJourneyMode && d > 3 && chance(0.8)) {
           circlePosition += (circlePosition > 0 ? -1 : 1);
         } else {
@@ -598,6 +546,27 @@
       }
       notesSinceModulation = 0;
     }
+  }
+
+  // =========================
+  // HARMONIC DRONE (ROOT or THIRD ONLY)
+  // =========================
+  function degreeNowFromIdx(idx) {
+    const oct = Math.floor(idx / 7) * 7;
+    return ((idx - oct) % 7 + 7) % 7;
+  }
+
+  function isThirdHarmonicallySafe({ atCadenceZone, tensionVal, melodyDeg, planType }) {
+    if (atCadenceZone) return false;
+    if (tensionVal >= 0.55) return false;
+
+    // conservative: only if melody is on stable triad degrees (1,3,5)
+    if (!(melodyDeg === 0 || melodyDeg === 2 || melodyDeg === 4)) return false;
+
+    // conservative: avoid third during half/deceptive plans (often dominant-ish context)
+    if (planType === "half" || planType === "deceptive" || planType === "evaded") return false;
+
+    return true;
   }
 
   function scheduler() {
@@ -617,7 +586,6 @@
 
     const noteDur = (1 / runDensity) * 2.5;
 
-    // --- CONTINUOUS SPACE ---
     if (reverbSend && arcPos !== arcClimaxAt - 1) {
       let tickPressure = Math.min(1.0, notesSinceModulation / 48.0);
       if (arcPos === arcClimaxAt) tickPressure *= 2.5;
@@ -668,7 +636,6 @@
       }
       const isCadence = (phraseStep >= 13);
 
-      // --- THE SHADOW ---
       if (reverbSend && arcPos === arcClimaxAt - 1) {
         if (phraseStep === 13) {
           reverbSend.gain.cancelScheduledValues(nextTimeA);
@@ -792,23 +759,20 @@
       if (patternIdxA > 10) patternIdxA = 10;
       if (patternIdxA < -8) patternIdxA = -8;
 
-      const degNow = ((patternIdxA - Math.floor(patternIdxA / 7) * 7) % 7 + 7) % 7;
+      const degNow = degreeNowFromIdx(patternIdxA);
       const wantLT2 = cadenceTargets(currentCadenceType).wantLT;
       const raiseLT = isCadence && wantLT2 && degNow === 6 && (phraseStep === 13 || phraseStep === 14 || pendingLTResolution);
 
-      // Melody note
       let freq = getScaleNote(baseFreq, patternIdxA, circlePosition, isMinor, { raiseLeadingTone: raiseLT });
-      freq = maybeFloorTo80(freq); // NEW: frequent 80Hz floor behavior
 
       // --- SIGNPOST & DRONE LOGIC ---
       const isArcStart = (arcPos === 0 && phraseStep === 0);
       const isClimax = (arcPos === arcClimaxAt && phraseStep === 0);
-
-      // Only mute bells if NOT the very first phrase
       const isDroneSolo = (arcPos === 0 && phraseStep < 12 && phraseCount > 0);
 
       const atPhraseStart = (phraseStep === 0 || phraseStep === 1);
       const atCadenceZone = (phraseStep >= 13);
+
       let pedalProb = 0.0;
       if (atPhraseStart) pedalProb = 0.16;
       else if (atCadenceZone) pedalProb = 0.10 + (tension * 0.05);
@@ -820,49 +784,44 @@
       if (isArcStart || isClimax || chance(pedalProb)) {
         const planType = currentCadenceType || "authentic";
 
-        // NEW: choose pedal degree with conservative harmonic intent
-        const pedalDegree = (isArcStart || isClimax) ? 0 : pickDroneDegree(planType, isMinor);
+        // === ONLY ROOT OR THIRD ===
+        // Root = degree 0; Third = degree 2 (major/minor decided by mode)
+        let pedalDegree = 0;
+
+        const thirdSafe = isThirdHarmonicallySafe({
+          atCadenceZone,
+          tensionVal: tension,
+          melodyDeg: degNow,
+          planType
+        });
+
+        // If safe, we *sometimes* use the third drone; otherwise root.
+        if (thirdSafe && chance(0.55)) pedalDegree = 2;
+        else pedalDegree = 0;
 
         const pedalOct = Math.min(curRegister - 1, 0);
         const pedalIdx = pedalOct * 7 + pedalDegree;
         let pedalFreq = getScaleNote(baseFreq, pedalIdx, circlePosition, isMinor);
 
-        // NEW: frequent floor for drone too
-        pedalFreq = maybeFloorTo80(pedalFreq);
-
-        // Keep legacy safety shaping (still helpful)
-        if (isArcStart) {
-          while (pedalFreq < 90) pedalFreq *= 2;
-          while (pedalFreq > 220) pedalFreq *= 0.5;
-        } else {
-          while (pedalFreq < 50) pedalFreq *= 2;
-          while (pedalFreq > 110) pedalFreq *= 0.5;
-        }
+        // enforce 80Hz floor (already applied inside getScaleNote, but keep robust)
+        pedalFreq = applyFreqFloor(pedalFreq);
 
         const t0 = Math.max(nextTimeA - 0.05, audioContext.currentTime);
         let pedalDur = atPhraseStart ? 16.0 : (atCadenceZone ? 12.0 : 7.0);
         if (isArcStart) pedalDur = 32.0;
         if (isClimax) pedalDur = 24.0;
 
-        // NEW: 30% quieter drone
-        const volBase = (isArcStart || isClimax) ? 0.35 : 0.18;
-        const vol = volBase * DRONE_GAIN_MULT;
+        // Keep drone audible while still 30% quieter:
+        // use slightly stronger base than the old 0.18 so the 0.70 mult doesn't vanish.
+        const baseVol = (isArcStart || isClimax) ? 0.28 : 0.20;
 
-        // Schedule main pedal
-        scheduleBassPedal(audioContext, masterGain, reverbSend, pedalFreq, t0, pedalDur, vol);
-
-        // NEW: optional harmony drone tone: ONLY major/minor 3rd above tonic pedal, when sensible
-        const thirdHz = pickDroneHarmonyToneHz(baseFreq, pedalIdx, circlePosition, isMinor, planType);
-        if (thirdHz) {
-          // Keep it even softer than the main drone
-          scheduleBassPedal(audioContext, masterGain, reverbSend, thirdHz, t0, pedalDur, vol * 0.65);
-        }
+        scheduleBassPedal(audioContext, masterGain, reverbSend, pedalFreq, t0, pedalDur, baseVol);
       }
 
       // --- SCHEDULE MELODY (Unless in Solo Mode) ---
       if (!isDroneSolo) {
         if (isCadence && arcPos === arcClimaxAt && phraseStep === 15) {
-          scheduleNote(audioContext, masterGain, reverbSend, (freq * 2.0), nextTimeA, appliedDur, 0.35, pressure, tension);
+          scheduleNote(audioContext, masterGain, reverbSend, freq * 2.0, nextTimeA, appliedDur, 0.35, pressure, tension);
         }
         scheduleNote(audioContext, masterGain, reverbSend, freq, nextTimeA, appliedDur, 0.4, pressure, tension);
       }
@@ -878,12 +837,11 @@
     initAudio();
     if (audioContext.state === "suspended") audioContext.resume?.();
 
-    // FORCE RESET GAIN (Robust Fix)
     if (masterGain && audioContext) {
       const t = audioContext.currentTime;
-      masterGain.gain.cancelScheduledValues(0); // Cancel everything
-      masterGain.gain.setValueAtTime(0, t); // Snap to 0
-      masterGain.gain.linearRampToValueAtTime(0.3, t + 0.1); // Quick fade-in
+      masterGain.gain.cancelScheduledValues(0);
+      masterGain.gain.setValueAtTime(0, t);
+      masterGain.gain.linearRampToValueAtTime(0.3, t + 0.1);
     }
 
     const seed = (crypto?.getRandomValues
@@ -920,7 +878,6 @@
     if (masterGain && audioContext) {
       const t = audioContext.currentTime;
       masterGain.gain.cancelScheduledValues(t);
-      // ROBUST FADE OUT: Use linear ramp to ensure it hits 0
       masterGain.gain.setValueAtTime(masterGain.gain.value, t);
       masterGain.gain.linearRampToValueAtTime(0, t + 0.05);
     }
@@ -931,11 +888,13 @@
   function beginNaturalEnd() {
     isEndingNaturally = true;
     isPlaying = false;
-
     if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
     setButtonState("stopped");
   }
 
+  // =========================
+  // OFFLINE EXPORT (MATCHES LIVE RULES)
+  // =========================
   async function renderWavExport() {
     if (!isPlaying && !audioContext) { alert("Please start playback first."); return; }
     if (!sessionSnapshot?.seed) { alert("Press Play once first."); return; }
@@ -1106,25 +1065,8 @@
       targetSend += (normTension * 0.55);
       targetSend -= (0.10 * normPressure);
 
-      if (localArcPos === localArcClimaxAt - 1) {
-        if (localPhraseStep === 13) {
-          targetSend = 0.0;
-          offlineSend.gain.cancelScheduledValues(localTime);
-          offlineSend.gain.setValueAtTime(offlineSend.gain.value, localTime);
-          offlineSend.gain.setTargetAtTime(0.0, localTime, 0.02);
-        } else if (localPhraseStep === 14) {
-          let base = 0.65 - (0.25 * normDensity) + (normTension * 0.55);
-          base -= (0.10 * normPressure);
-          base = Math.max(0, Math.min(0.95, base));
-          offlineSend.gain.setTargetAtTime(base, localTime, 1.5);
-        } else {
-          targetSend = Math.max(0, Math.min(0.95, targetSend));
-          offlineSend.gain.setTargetAtTime(targetSend, localTime, 0.5);
-        }
-      } else {
-        targetSend = Math.max(0, Math.min(0.95, targetSend));
-        offlineSend.gain.setTargetAtTime(targetSend, localTime, 0.5);
-      }
+      targetSend = Math.max(0, Math.min(0.95, targetSend));
+      offlineSend.gain.setTargetAtTime(targetSend, localTime, 0.5);
 
       let appliedDur = noteDur;
       let clearPendingAfterNote = false;
@@ -1207,11 +1149,11 @@
             localIdx += deltaEnd;
           }
 
-          if (ct === "evaded") localTension = Math.max(0, Math.min(1, localTension + 0.18));
-          else if (ct === "half") localTension = Math.max(0, Math.min(1, localTension + 0.08));
-          else if (ct === "deceptive") localTension = Math.max(0, Math.min(1, localTension + 0.06));
-          else if (ct === "plagal") localTension = Math.max(0, Math.min(1, localTension - 0.10));
-          else if (ct === "authentic") localTension = Math.max(0, Math.min(1, localTension - 0.22));
+          if (ct === "evaded") localTension = clamp01(localTension + 0.18);
+          else if (ct === "half") localTension = clamp01(localTension + 0.08);
+          else if (ct === "deceptive") localTension = clamp01(localTension + 0.06);
+          else if (ct === "plagal") localTension = clamp01(localTension - 0.10);
+          else if (ct === "authentic") localTension = clamp01(localTension - 0.22);
 
           localLastCadence = ct;
           clearPendingAfterNote = true;
@@ -1233,30 +1175,22 @@
         }
       }
 
-      if (!isCadence) {
-        const anchor = 1;
-        const reg = Math.floor(localIdx / 7);
-        if (reg < anchor && chance(0.22)) localIdx += 1;
-        else if (reg > anchor && chance(0.22)) localIdx -= 1;
-      }
-
       if (localIdx > 10) localIdx = 10;
       if (localIdx < -8) localIdx = -8;
 
-      const degNow = ((localIdx - Math.floor(localIdx / 7) * 7) % 7 + 7) % 7;
+      const degNow = degreeNowFromIdx(localIdx);
       const wantLT2 = localCadenceTargets(localCadenceType).wantLT;
       const raiseLT = isCadence && wantLT2 && degNow === 6 && (localPhraseStep === 13 || localPhraseStep === 14 || localPendingLT);
-
       let freq = getScaleNote(baseFreq, localIdx, localCircle, localMinor, { raiseLeadingTone: raiseLT });
-      freq = maybeFloorTo80(freq); // NEW: export too
 
-      // --- DRONE LOGIC FOR EXPORT ---
+      // Drone decisions (root or third only)
       const isArcStart = (localArcPos === 0 && localPhraseStep === 0);
       const isClimax = (localArcPos === localArcClimaxAt && localPhraseStep === 0);
       const isDroneSolo = (localArcPos === 0 && localPhraseStep < 12 && localPhraseCount > 0);
 
       const atPhraseStart = (localPhraseStep === 0 || localPhraseStep === 1);
       const atCadenceZone = (localPhraseStep >= 13);
+
       let pedalProb = 0.0;
       if (atPhraseStart) pedalProb = 0.16;
       else if (atCadenceZone) pedalProb = 0.10 + (localTension * 0.05);
@@ -1267,40 +1201,34 @@
 
       if (isArcStart || isClimax || chance(pedalProb)) {
         const planType = localCadenceType || "authentic";
-        const pedalDegree = (isArcStart || isClimax) ? 0 : pickDroneDegree(planType, localMinor);
+        let pedalDegree = 0;
+
+        const thirdSafe = isThirdHarmonicallySafe({
+          atCadenceZone,
+          tensionVal: localTension,
+          melodyDeg: degNow,
+          planType
+        });
+
+        if (thirdSafe && chance(0.55)) pedalDegree = 2;
+        else pedalDegree = 0;
 
         const pedalOct = Math.min(curRegister - 1, 0);
         const pedalIdx = pedalOct * 7 + pedalDegree;
         let pedalFreq = getScaleNote(baseFreq, pedalIdx, localCircle, localMinor);
-        pedalFreq = maybeFloorTo80(pedalFreq); // NEW
-
-        if (isArcStart) {
-          while (pedalFreq < 90) pedalFreq *= 2;
-          while (pedalFreq > 220) pedalFreq *= 0.5;
-        } else {
-          while (pedalFreq < 50) pedalFreq *= 2;
-          while (pedalFreq > 110) pedalFreq *= 0.5;
-        }
 
         const t0 = Math.max(localTime - 0.05, 0);
         let pedalDur = atPhraseStart ? 16.0 : (atCadenceZone ? 12.0 : 7.0);
         if (isArcStart) pedalDur = 32.0;
         if (isClimax) pedalDur = 24.0;
 
-        const volBase = (isArcStart || isClimax) ? 0.35 : 0.18;
-        const vol = volBase * DRONE_GAIN_MULT; // NEW: 30% quieter
-
-        scheduleBassPedal(offlineCtx, offlineMaster, offlineSend, pedalFreq, t0, pedalDur, vol);
-
-        const thirdHz = pickDroneHarmonyToneHz(baseFreq, pedalIdx, localCircle, localMinor, planType);
-        if (thirdHz) {
-          scheduleBassPedal(offlineCtx, offlineMaster, offlineSend, thirdHz, t0, pedalDur, vol * 0.65);
-        }
+        const baseVol = (isArcStart || isClimax) ? 0.28 : 0.20;
+        scheduleBassPedal(offlineCtx, offlineMaster, offlineSend, pedalFreq, t0, pedalDur, baseVol);
       }
 
       if (!isDroneSolo) {
         if (isCadence && localArcPos === localArcClimaxAt && localPhraseStep === 15) {
-          scheduleNote(offlineCtx, offlineMaster, offlineSend, (freq * 2.0), localTime, appliedDur, 0.35, pressure, localTension);
+          scheduleNote(offlineCtx, offlineMaster, offlineSend, freq * 2.0, localTime, appliedDur, 0.35, pressure, localTension);
         }
         scheduleNote(offlineCtx, offlineMaster, offlineSend, freq, localTime, appliedDur, 0.4, pressure, localTension);
       }
@@ -1318,7 +1246,7 @@
     const a = document.createElement("a");
     a.style.display = "none";
     a.href = url;
-    a.download = `open-final-v148-${Date.now()}.wav`;
+    a.download = `open-final-v149-${Date.now()}.wav`;
     document.body.appendChild(a);
     a.click();
     setTimeout(() => { document.body.removeChild(a); window.URL.revokeObjectURL(url); }, 100);
@@ -1396,11 +1324,9 @@
     const recBtn = document.getElementById("record");
     if (recBtn) recBtn.onclick = toggleRecording;
 
-    // Export hook logic: if button exists, wire it up
     const exportBtn = document.getElementById("export");
     if (exportBtn) exportBtn.onclick = renderWavExport;
 
-    // Ensure initial UI state in popout
     if (isPopoutMode()) {
       document.body.classList.add("popout");
       setButtonState("stopped");
@@ -1408,7 +1334,6 @@
       setButtonState("stopped");
     }
 
-    // Use the centralized launchPlayer logic
     document.getElementById("launchPlayer")?.addEventListener("click", launchPlayer);
   });
 })();
