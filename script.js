@@ -1,16 +1,14 @@
 (() => {
-  const STATE_KEY = "open_player_settings_v148_robust";
+  const STATE_KEY = "open_player_settings_v146_warm_drone";
 
   // =========================
   // VIEW & STATE
   // =========================
   function isPopoutMode() { return window.location.hash === "#popout"; }
-
   function isMobileDevice() {
     const ua = navigator.userAgent || "";
     return /iPhone|iPad|iPod|Android/i.test(ua) ||
-      (window.matchMedia?.("(pointer: coarse)")?.matches &&
-        window.matchMedia?.("(max-width: 820px)")?.matches);
+      (window.matchMedia?.("(pointer: coarse)")?.matches && window.matchMedia?.("(max-width: 820px)")?.matches);
   }
 
   function applyModeClasses() {
@@ -19,7 +17,6 @@
   }
 
   function launchPlayer() {
-    // Mobile: use in-page "popout" mode (hash)
     if (isMobileDevice()) {
       document.body.classList.add("mobile-player");
       window.location.hash = "#popout";
@@ -28,7 +25,6 @@
       return;
     }
 
-    // Desktop: centered popup window
     const width = 500;
     const height = 680;
     const left = Math.max(0, (window.screen.width / 2) - (width / 2));
@@ -44,9 +40,7 @@
   function loadState() {
     try { return JSON.parse(localStorage.getItem(STATE_KEY)); } catch { return null; }
   }
-  function saveState(state) {
-    try { localStorage.setItem(STATE_KEY, JSON.stringify(state)); } catch {}
-  }
+  function saveState(state) { try { localStorage.setItem(STATE_KEY, JSON.stringify(state)); } catch {} }
 
   function readControls() {
     return {
@@ -82,7 +76,6 @@
     const stopBtn = document.getElementById("stop");
     const toneInput = document.getElementById("tone");
 
-    // "Filled" (White) = Active State
     if (playBtn) playBtn.classList.toggle("filled", state === "playing");
     if (stopBtn) stopBtn.classList.toggle("filled", state !== "playing");
 
@@ -223,11 +216,26 @@
 
   let phraseCount = 0;
   let arcLen = 6;
+
+  // arcPos starts at -1 so first phrase increments it to 0 (true arc start)
   let arcPos = -1;
+
   let arcClimaxAt = 4;
   let tension = 0.0;
   let lastCadenceType = "none";
   let currentCadenceType = "none";
+
+  // =========================
+  // NOTE FLOORS (Anti-thump)
+  // =========================
+  // User request: note floor below 80 Hz
+  const NOTE_FLOOR_HZ = 80;   // bell/melody floor
+  const DRONE_FLOOR_HZ = 55;  // drone root floor (keeps weight, avoids subby)
+
+  function clampFreqMin(freq, minHz) {
+    while (freq < minHz) freq *= 2;
+    return freq;
+  }
 
   function createImpulseResponse(ctx) {
     const duration = 10.0, decay = 2.8, rate = ctx.sampleRate;
@@ -248,7 +256,7 @@
     const d = Math.abs(a - b);
     return Math.min(d, 7 - d);
   }
-  function clamp01(x) { return Math.max(0, Math.min(1, x)); }
+  function clamp01(x){ return Math.max(0, Math.min(1, x)); }
 
   function startNewArc() {
     arcLen = 4 + Math.floor(rand() * 5);
@@ -277,20 +285,20 @@
 
     for (const k of Object.keys(w)) w[k] = Math.max(0.001, w[k] - cadenceRepeatPenalty(k));
     const keys = Object.keys(w);
-    const sum = keys.reduce((a, k) => a + w[k], 0);
+    const sum = keys.reduce((a,k)=>a+w[k],0);
     let r = rand() * sum;
     for (const k of keys) { r -= w[k]; if (r <= 0) return k; }
     return "authentic";
   }
 
   function cadenceTargets(type) {
-    switch (type) {
-      case "authentic": return { pre: 6, end: 0, wantLT: true };
-      case "half": return { pre: 1, end: 4, wantLT: false };
-      case "plagal": return { pre: 3, end: 0, wantLT: false };
-      case "deceptive": return { pre: 6, end: 5, wantLT: true };
-      case "evaded": return { pre: 6, end: 2, wantLT: true };
-      default: return { pre: 2, end: 0, wantLT: false };
+    switch(type){
+      case "authentic":  return { pre: 6, end: 0, wantLT: true  };
+      case "half":       return { pre: 1, end: 4, wantLT: false };
+      case "plagal":     return { pre: 3, end: 0, wantLT: false };
+      case "deceptive":  return { pre: 6, end: 5, wantLT: true  };
+      case "evaded":     return { pre: 6, end: 2, wantLT: true  };
+      default:           return { pre: 2, end: 0, wantLT: false };
     }
   }
 
@@ -336,15 +344,15 @@
     heartbeat.start();
     heartbeat.connect(audioContext.destination);
 
-    let videoWakeLock = document.querySelector("video");
+    let videoWakeLock = document.querySelector('video');
     if (!videoWakeLock) {
-      videoWakeLock = document.createElement("video");
+      videoWakeLock = document.createElement('video');
       Object.assign(videoWakeLock.style, {
-        position: "fixed", bottom: "0", right: "0", width: "1px", height: "1px",
-        opacity: "0.01", pointerEvents: "none", zIndex: "-1"
+        position: 'fixed', bottom: '0', right: '0', width: '1px', height: '1px',
+        opacity: '0.01', pointerEvents: 'none', zIndex: '-1'
       });
-      videoWakeLock.setAttribute("playsinline", "");
-      videoWakeLock.setAttribute("muted", "");
+      videoWakeLock.setAttribute('playsinline', '');
+      videoWakeLock.setAttribute('muted', '');
       document.body.appendChild(videoWakeLock);
     }
     videoWakeLock.srcObject = streamDest.stream;
@@ -361,7 +369,7 @@
     const FRACTURE_RATIOS = [Math.SQRT2, 1.618, 2.414, 2.718, 3.1415];
     const ratioFuzz = isFractured ? 0.08 : 0.0;
 
-    const voices = Array.from({ length: numVoices }, () => {
+    const voices = Array.from({length: numVoices}, () => {
       let mRatio;
       if (isFractured) {
         mRatio = FRACTURE_RATIOS[Math.floor(rand() * FRACTURE_RATIOS.length)];
@@ -381,14 +389,13 @@
       const modGain = ctx.createGain();
       const ampGain = ctx.createGain();
 
-      // WARMTH FILTER: Cuts digital fizz above 6kHz
       const toneFilter = ctx.createBiquadFilter();
       toneFilter.type = "lowpass";
       toneFilter.frequency.value = Math.min(freq * 3.5, 6000);
       toneFilter.Q.value = 0.6;
 
-      carrier.type = "sine";
-      modulator.type = "sine";
+      carrier.type = 'sine';
+      modulator.type = 'sine';
 
       const driftMult = isFractured ? 15 : 10;
       const drift = (rand() - 0.5) * (2 + (instability * driftMult));
@@ -417,18 +424,28 @@
     });
   }
 
-  // --- BASS PEDAL: Warm Drone (1.8 FM, 650Hz Filter) ---
+  // UPDATED BASS PEDAL:
+  // - drone volume softened by ~1/3
+  // - added gentle highpass to reduce "thump"
   function scheduleBassPedal(ctx, destination, wetSend, freq, time, duration, volume) {
     const isDrone = (duration > 20.0);
+    const vol = isDrone ? (volume * (2 / 3)) : volume;
 
     const carrier = ctx.createOscillator();
     const modulator = ctx.createOscillator();
     const modGain = ctx.createGain();
     const ampGain = ctx.createGain();
-    const lp = ctx.createBiquadFilter();
 
-    carrier.type = "sine";
-    modulator.type = "sine";
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.setValueAtTime(isDrone ? 45 : 55, time);
+    hp.Q.value = 0.7;
+
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+
+    carrier.type = 'sine';
+    modulator.type = 'sine';
 
     if (isDrone) {
       carrier.frequency.value = freq;
@@ -449,11 +466,10 @@
     }
 
     ampGain.gain.setValueAtTime(0.0001, time);
-    if (isDrone) ampGain.gain.exponentialRampToValueAtTime(volume, time + 2.0);
-    else ampGain.gain.exponentialRampToValueAtTime(volume, time + 0.15);
+    if (isDrone) ampGain.gain.exponentialRampToValueAtTime(vol, time + 2.0);
+    else ampGain.gain.exponentialRampToValueAtTime(vol, time + 0.15);
     ampGain.gain.exponentialRampToValueAtTime(0.0001, time + duration);
 
-    lp.type = "lowpass";
     if (isDrone) {
       lp.frequency.setValueAtTime(650, time);
       lp.Q.value = 0.6;
@@ -466,7 +482,9 @@
     modGain.connect(carrier.frequency);
 
     carrier.connect(ampGain);
-    ampGain.connect(lp);
+    ampGain.connect(hp);
+    hp.connect(lp);
+
     lp.connect(destination);
     lp.connect(wetSend);
 
@@ -474,24 +492,69 @@
     modulator.stop(time + duration); carrier.stop(time + duration);
   }
 
+  // NEW: chord drones (triads)
+  // - softened by ~1/3 overall
+  // - gentle HP/LP to reduce thump and fizz
+  function scheduleDroneChord(ctx, destination, wetSend, rootFreq, time, duration, volume, minorMode) {
+    let f0 = clampFreqMin(rootFreq, DRONE_FLOOR_HZ);
+
+    const third = minorMode ? Math.pow(2, 3/12) : Math.pow(2, 4/12);
+    const fifth = Math.pow(2, 7/12);
+
+    let freqs = [f0, f0 * third, f0 * fifth].map(f => {
+      while (f > 220) f *= 0.5;
+      return f;
+    });
+
+    const perVoice = (volume * (2/3)) / freqs.length;
+
+    const amp = ctx.createGain();
+    amp.gain.setValueAtTime(0.0001, time);
+    amp.gain.exponentialRampToValueAtTime(1.0, time + 2.0);
+    amp.gain.exponentialRampToValueAtTime(0.0001, time + duration);
+
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.setValueAtTime(40, time);
+    hp.Q.value = 0.7;
+
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.setValueAtTime(650, time);
+    lp.Q.value = 0.6;
+
+    amp.connect(hp);
+    hp.connect(lp);
+    lp.connect(destination);
+    lp.connect(wetSend);
+
+    freqs.forEach((f) => {
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = "sine";
+      o.frequency.setValueAtTime(f, time);
+      o.detune.setValueAtTime((rand() - 0.5) * 6, time);
+      g.gain.setValueAtTime(perVoice, time);
+
+      o.connect(g);
+      g.connect(amp);
+
+      o.start(time);
+      o.stop(time + duration);
+    });
+  }
+
   function getScaleNote(baseFreq, scaleIndex, circlePos, minorMode, opts = {}) {
     let pos = circlePos % 12; if (pos < 0) pos += 12;
     let semitones = (pos * 7) % 12;
     let rootOffset = semitones; if (minorMode) rootOffset = (semitones + 9) % 12;
-
     const majorIntervals = [0, 2, 4, 5, 7, 9, 11];
     const minorIntervals = [0, 2, 3, 5, 7, 8, 10];
-
     const len = 7;
     const octave = Math.floor(scaleIndex / len);
     const degree = ((scaleIndex % len) + len) % len;
-
     let intervals = minorMode ? minorIntervals : majorIntervals;
-    if (minorMode && opts.raiseLeadingTone && degree === 6) {
-      intervals = minorIntervals.slice();
-      intervals[6] = 11;
-    }
-
+    if (minorMode && opts.raiseLeadingTone && degree === 6) { intervals = minorIntervals.slice(); intervals[6] = 11; }
     const noteValue = rootOffset + intervals[degree] + (octave * 12);
     return baseFreq * Math.pow(2, noteValue / 12);
   }
@@ -525,9 +588,8 @@
         else if (isMinor && chance(0.6)) isMinor = false;
       } else {
         const isJourneyMode = (durationInput === "infinite");
-        const dist = Math.abs(localCircle); // localCircle isn't available here, fix:
-        const d = Math.abs(circlePosition);
-        if (!isJourneyMode && d > 3 && chance(0.8)) {
+        const dist = Math.abs(circlePosition);
+        if (!isJourneyMode && dist > 3 && chance(0.8)) {
           circlePosition += (circlePosition > 0 ? -1 : 1);
         } else {
           if (chance(0.3)) isMinor = !isMinor;
@@ -540,7 +602,6 @@
 
   function scheduler() {
     if (!isPlaying) return;
-
     const durationInput = document.getElementById("songDuration")?.value ?? "60";
     const now = audioContext.currentTime;
     const elapsed = now - sessionStartTime;
@@ -549,6 +610,7 @@
       if (elapsed >= targetDuration) isApproachingEnd = true;
     }
 
+    // 100 Hz floor for base tone control (unchanged)
     let baseFreq = Number(document.getElementById("tone")?.value ?? 110);
     if (!Number.isFinite(baseFreq)) baseFreq = 110;
     baseFreq = Math.max(100, Math.min(200, baseFreq));
@@ -589,8 +651,9 @@
 
       if (isApproachingEnd && !isEndingNaturally) {
         if (patternIdxA % 7 === 0) {
-          const freq = getScaleNote(baseFreq, patternIdxA, circlePosition, isMinor);
-          scheduleNote(audioContext, masterGain, reverbSend, freq * 0.5, nextTimeA, 25.0, 0.5, 0, 0);
+          let fEnd = getScaleNote(baseFreq, patternIdxA, circlePosition, isMinor) * 0.5;
+          fEnd = clampFreqMin(fEnd, NOTE_FLOOR_HZ);
+          scheduleNote(audioContext, masterGain, reverbSend, fEnd, nextTimeA, 25.0, 0.5, 0, 0);
           beginNaturalEnd();
           return;
         }
@@ -630,6 +693,7 @@
       else if (phraseStep === 13) slowProb = 0.20;
       if (chance(slowProb)) appliedDur *= (1.20 + rand() * 0.20);
 
+      // --- MELODY LOGIC ---
       if (isCadence) {
         const targets = [0, 2, 4];
         const currentOctave = Math.floor(patternIdxA / 7) * 7;
@@ -648,58 +712,45 @@
           targetDeg = (targetDeg + dir + 7) % 7;
         }
         let delta = targetDeg - deg;
-        if (delta > 3) delta -= 7;
-        if (delta < -3) delta += 7;
+        if (delta > 3) delta -= 7; if (delta < -3) delta += 7;
         if (Math.abs(delta) === 3) delta = chance(0.5) ? 3 : -3;
         else if (delta === 0 && phraseStep <= 14 && chance(0.18)) delta = chance(0.5) ? 1 : -1;
         patternIdxA = currentOctave + deg + delta;
 
         const ct = currentCadenceType;
         const targ = cadenceTargets(ct);
-
         if (phraseStep === 14) {
-          const forcePreProb =
-            (ct === "evaded") ? 0.35 :
-              (ct === "half") ? 0.45 :
-                (ct === "plagal") ? 0.50 : 0.65;
-
+          const forcePreProb = (ct === "evaded") ? 0.35 : (ct === "half") ? 0.45 : (ct === "plagal") ? 0.50 : 0.65;
           if (chance(forcePreProb)) {
             const targetDegPre = targ.pre;
             const curOct = Math.floor(patternIdxA / 7) * 7;
             const curDeg = ((patternIdxA - curOct) % 7 + 7) % 7;
             let deltaPre = targetDegPre - curDeg;
-            if (deltaPre > 3) deltaPre -= 7;
-            if (deltaPre < -3) deltaPre += 7;
+            if (deltaPre > 3) deltaPre -= 7; if (deltaPre < -3) deltaPre += 7;
             patternIdxA += deltaPre;
             pendingLTResolution = !!targ.wantLT;
           }
         }
-
         if (phraseStep === 15) {
-          const baseProb =
-            (ct === "evaded") ? (0.35 + tension * 0.20) :
-              (ct === "half") ? 0.78 :
-                (ct === "plagal") ? 0.74 :
-                  (ct === "deceptive") ? 0.86 : 0.90;
-
+          const baseProb = (ct === "evaded") ? (0.35 + tension * 0.20)
+            : (ct === "half") ? 0.78
+            : (ct === "plagal") ? 0.74
+            : (ct === "deceptive") ? 0.86
+            : 0.90;
           const finalProb = pendingLTResolution ? Math.min(0.98, baseProb + 0.06) : baseProb;
-
           if (chance(finalProb)) {
             const targetDegEnd = targ.end;
             const curOct = Math.floor(patternIdxA / 7) * 7;
             const curDeg = ((patternIdxA - curOct) % 7 + 7) % 7;
             let deltaEnd = targetDegEnd - curDeg;
-            if (deltaEnd > 3) deltaEnd -= 7;
-            if (deltaEnd < -3) deltaEnd += 7;
+            if (deltaEnd > 3) deltaEnd -= 7; if (deltaEnd < -3) deltaEnd += 7;
             patternIdxA += deltaEnd;
           }
-
           if (ct === "evaded") tension = clamp01(tension + 0.18);
           else if (ct === "half") tension = clamp01(tension + 0.08);
           else if (ct === "deceptive") tension = clamp01(tension + 0.06);
           else if (ct === "plagal") tension = clamp01(tension - 0.10);
           else if (ct === "authentic") tension = clamp01(tension - 0.22);
-
           lastCadenceType = ct;
           clearPendingAfterNote = true;
         }
@@ -726,20 +777,22 @@
         if (reg < anchor && chance(0.22)) patternIdxA += 1;
         else if (reg > anchor && chance(0.22)) patternIdxA -= 1;
       }
-
       if (patternIdxA > 10) patternIdxA = 10;
       if (patternIdxA < -8) patternIdxA = -8;
 
       const degNow = ((patternIdxA - Math.floor(patternIdxA / 7) * 7) % 7 + 7) % 7;
-      const wantLT2 = cadenceTargets(currentCadenceType).wantLT;
+      const ct2 = currentCadenceType;
+      const wantLT = cadenceTargets(ct2).wantLT;
       const raiseLT = isCadence && wantLT && degNow === 6 && (phraseStep === 13 || phraseStep === 14 || pendingLTResolution);
+
       let freq = getScaleNote(baseFreq, patternIdxA, circlePosition, isMinor, { raiseLeadingTone: raiseLT });
+      freq = clampFreqMin(freq, NOTE_FLOOR_HZ);
 
       // --- SIGNPOST & DRONE LOGIC ---
       const isArcStart = (arcPos === 0 && phraseStep === 0);
       const isClimax = (arcPos === arcClimaxAt && phraseStep === 0);
 
-      // Only mute bells if NOT the very first phrase
+      // Only mute bells if NOT the very first phrase (phraseCount > 0)
       const isDroneSolo = (arcPos === 0 && phraseStep < 12 && phraseCount > 0);
 
       const atPhraseStart = (phraseStep === 0 || phraseStep === 1);
@@ -775,13 +828,21 @@
           while (pedalFreq > 110) pedalFreq *= 0.5;
         }
 
+        // enforce drone/pedal floor
+        pedalFreq = clampFreqMin(pedalFreq, DRONE_FLOOR_HZ);
+
         const t0 = Math.max(nextTimeA - 0.05, audioContext.currentTime);
         let pedalDur = atPhraseStart ? 16.0 : (atCadenceZone ? 12.0 : 7.0);
         if (isArcStart) pedalDur = 32.0;
         if (isClimax) pedalDur = 24.0;
 
         const vol = (isArcStart || isClimax) ? 0.35 : 0.18;
-        scheduleBassPedal(audioContext, masterGain, reverbSend, pedalFreq, t0, pedalDur, vol);
+
+        if (pedalDur > 20.0) {
+          scheduleDroneChord(audioContext, masterGain, reverbSend, pedalFreq, t0, pedalDur, vol, isMinor);
+        } else {
+          scheduleBassPedal(audioContext, masterGain, reverbSend, pedalFreq, t0, pedalDur, vol);
+        }
       }
 
       // --- SCHEDULE MELODY (Unless in Solo Mode) ---
@@ -794,7 +855,6 @@
 
       notesSinceModulation++;
       if (clearPendingAfterNote) pendingLTResolution = false;
-
       nextTimeA += (1 / runDensity) * (0.95 + rand() * 0.1);
     }
   }
@@ -803,12 +863,11 @@
     initAudio();
     if (audioContext.state === "suspended") audioContext.resume?.();
 
-    // FORCE RESET GAIN (Robust Fix)
+    // FORCE RESET GAIN (Crucial for "No Sound" fix)
     if (masterGain && audioContext) {
       const t = audioContext.currentTime;
-      masterGain.gain.cancelScheduledValues(0); // Cancel everything
-      masterGain.gain.setValueAtTime(0, t); // Snap to 0
-      masterGain.gain.linearRampToValueAtTime(0.3, t + 0.1); // Quick fade-in
+      masterGain.gain.cancelScheduledValues(t);
+      masterGain.gain.setValueAtTime(0.3, t);
     }
 
     const seed = (crypto?.getRandomValues
@@ -839,28 +898,23 @@
     isPlaying = false;
     isEndingNaturally = false;
     isApproachingEnd = false;
-
     if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
-
     if (masterGain && audioContext) {
       const t = audioContext.currentTime;
       masterGain.gain.cancelScheduledValues(t);
-      // ROBUST FADE OUT: Use linear ramp to ensure it hits 0
-      masterGain.gain.setValueAtTime(masterGain.gain.value, t);
-      masterGain.gain.linearRampToValueAtTime(0, t + 0.05);
+      masterGain.gain.setTargetAtTime(0.0001, t, 0.02);
     }
-
     setButtonState("stopped");
   }
 
   function beginNaturalEnd() {
     isEndingNaturally = true;
     isPlaying = false;
-
     if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
     setButtonState("stopped");
   }
 
+  // --- OFFLINE EXPORT ---
   async function renderWavExport() {
     if (!isPlaying && !audioContext) { alert("Please start playback first."); return; }
     if (!sessionSnapshot?.seed) { alert("Press Play once first."); return; }
@@ -869,8 +923,8 @@
     const durationInput = document.getElementById("songDuration")?.value ?? "60";
     const exportDuration = (durationInput === "infinite") ? 180 : Math.min(180, parseFloat(durationInput));
     const sampleRate = 44100;
-
     const offlineCtx = new OfflineAudioContext(2, sampleRate * exportDuration, sampleRate);
+
     const offlineMaster = offlineCtx.createGain();
     offlineMaster.gain.value = 0.3;
     offlineMaster.connect(offlineCtx.destination);
@@ -906,7 +960,7 @@
     let localLastCadence = "none";
     let localCadenceType = "none";
 
-    function localStartNewArc() {
+    function localStartNewArc(){
       localArcLen = 4 + Math.floor(rand() * 5);
       localArcClimaxAt = Math.max(2, localArcLen - 2 - Math.floor(rand() * 2));
       localArcPos = -1;
@@ -922,52 +976,44 @@
     baseFreq = Math.max(100, Math.min(200, baseFreq));
 
     const noteDur = (1 / exportDensity) * 2.5;
+    let localCircle = 0; let localMinor = false; let localIdx = 0;
+    let localTime = 0; let localModCount = 0; let localPhraseStep = 15;
+    let localMotifPos = 0; let localPendingLT = false;
 
-    let localCircle = 0;
-    let localMinor = false;
-    let localIdx = 0;
-
-    let localTime = 0;
-    let localModCount = 0;
-    let localPhraseStep = 15;
-
-    let localMotifPos = 0;
-    let localPendingLT = false;
-
-    function localCadenceRepeatPenalty(type) {
+    function localCadenceRepeatPenalty(type){
       if (type !== localLastCadence) return 0.0;
       if (type === "authentic") return 0.30;
       return 0.18;
     }
 
-    function localPickCadenceType() {
+    function localPickCadenceType(){
       const nearClimax = (localArcPos === localArcClimaxAt);
       const lateArc = (localArcPos >= localArcLen - 2);
-      let w = { evaded: 0.20, half: 0.28, plagal: 0.12, deceptive: 0.18, authentic: 0.22 };
+      let w = { evaded:0.20, half:0.28, plagal:0.12, deceptive:0.18, authentic:0.22 };
 
       if (localArcPos < localArcClimaxAt) { w.authentic = 0.05; w.evaded += 0.2; w.half += 0.1; }
       w.authentic += localTension * 0.25; w.deceptive += localTension * 0.10; w.evaded -= localTension * 0.18; w.half -= localTension * 0.08;
 
-      if (nearClimax) { w.authentic += 0.25; w.deceptive += 0.10; w.evaded -= 0.20; w.half -= 0.10; }
-      if (lateArc && localTension > 0.45) { w.authentic += 0.22; w.evaded -= 0.15; w.half -= 0.05; }
-      if (localMinor) { w.deceptive += 0.05; w.plagal -= 0.02; }
+      if (nearClimax) { w.authentic+=0.25; w.deceptive+=0.10; w.evaded-=0.20; w.half-=0.10; }
+      if (lateArc && localTension > 0.45) { w.authentic+=0.22; w.evaded-=0.15; w.half-=0.05; }
+      if (localMinor) { w.deceptive+=0.05; w.plagal-=0.02; }
 
       for (const k of Object.keys(w)) w[k] = Math.max(0.001, w[k] - localCadenceRepeatPenalty(k));
       const keys = Object.keys(w);
-      const sum = keys.reduce((a, k) => a + w[k], 0);
-      let r = rand() * sum;
-      for (const k of keys) { r -= w[k]; if (r <= 0) return k; }
+      const sum = keys.reduce((a,k)=>a+w[k],0);
+      let r = rand()*sum;
+      for (const k of keys){ r -= w[k]; if (r<=0) return k; }
       return "authentic";
     }
 
-    function localCadenceTargets(type) {
-      switch (type) {
-        case "authentic": return { pre: 6, end: 0, wantLT: true };
-        case "half": return { pre: 1, end: 4, wantLT: false };
-        case "plagal": return { pre: 3, end: 0, wantLT: false };
-        case "deceptive": return { pre: 6, end: 5, wantLT: true };
-        case "evaded": return { pre: 6, end: 2, wantLT: true };
-        default: return { pre: 2, end: 0, wantLT: false };
+    function localCadenceTargets(type){
+      switch(type){
+        case "authentic":  return {pre:6,end:0,wantLT:true};
+        case "half":       return {pre:1,end:4,wantLT:false};
+        case "plagal":     return {pre:3,end:0,wantLT:false};
+        case "deceptive":  return {pre:6,end:5,wantLT:true};
+        case "evaded":     return {pre:6,end:2,wantLT:true};
+        default:           return {pre:2,end:0,wantLT:false};
       }
     }
 
@@ -991,12 +1037,8 @@
         } else {
           const isJourneyMode = (durIn === "infinite");
           const dist = Math.abs(localCircle);
-          if (!isJourneyMode && dist > 3 && chance(0.8)) {
-            localCircle += (localCircle > 0 ? -1 : 1);
-          } else {
-            if (chance(0.3)) localMinor = !localMinor;
-            else localCircle += (chance(0.5) ? 1 : -1);
-          }
+          if (!isJourneyMode && dist > 3 && chance(0.8)) { localCircle += (localCircle > 0 ? -1 : 1); }
+          else { if (chance(0.3)) localMinor = !localMinor; else localCircle += (chance(0.5) ? 1 : -1); }
         }
         localModCount = 0;
       }
@@ -1004,7 +1046,6 @@
 
     while (localTime < exportDuration - 2.0) {
       localPhraseStep = (localPhraseStep + 1) % 16;
-
       if (localPhraseStep === 0) {
         localPendingLT = false;
         localPhraseCount++;
@@ -1033,7 +1074,6 @@
 
       if (localArcPos === localArcClimaxAt - 1) {
         if (localPhraseStep === 13) {
-          targetSend = 0.0;
           offlineSend.gain.cancelScheduledValues(localTime);
           offlineSend.gain.setValueAtTime(offlineSend.gain.value, localTime);
           offlineSend.gain.setTargetAtTime(0.0, localTime, 0.02);
@@ -1053,7 +1093,6 @@
 
       let appliedDur = noteDur;
       let clearPendingAfterNote = false;
-
       let slowProb = 0.0;
       if (localPhraseStep === 15) slowProb = 0.85;
       else if (localPhraseStep === 0) slowProb = 0.25;
@@ -1066,77 +1105,62 @@
         const currentOctave = Math.floor(localIdx / 7) * 7;
         let deg = localIdx - currentOctave;
         deg = ((deg % 7) + 7) % 7;
-
         let best = targets[0];
         let bestD = circDist(deg, best);
         for (let i = 1; i < targets.length; i++) {
-          const t = targets[i];
-          const d = circDist(deg, t);
+          const t = targets[i]; const d = circDist(deg, t);
           if (d < bestD || (d === bestD && chance(0.5))) { best = t; bestD = d; }
         }
-
         const landProb = (localPhraseStep >= 15) ? 0.85 : 0.55;
         let targetDeg = best;
         if (!chance(landProb)) {
           const dir = chance(0.65) ? -1 : 1;
           targetDeg = (targetDeg + dir + 7) % 7;
         }
-
         let delta = targetDeg - deg;
-        if (delta > 3) delta -= 7;
-        if (delta < -3) delta += 7;
+        if (delta > 3) delta -= 7; if (delta < -3) delta += 7;
         if (Math.abs(delta) === 3) delta = chance(0.5) ? 3 : -3;
         else if (delta === 0 && localPhraseStep <= 14 && chance(0.18)) delta = chance(0.5) ? 1 : -1;
-
         localIdx = currentOctave + deg + delta;
 
         const ct = localCadenceType;
         const targ = localCadenceTargets(ct);
 
         if (localPhraseStep === 14) {
-          const forcePreProb =
-            (ct === "evaded") ? 0.35 :
-              (ct === "half") ? 0.45 :
-                (ct === "plagal") ? 0.50 : 0.65;
-
+          const forcePreProb = (ct === "evaded") ? 0.35 : (ct === "half") ? 0.45 : (ct === "plagal") ? 0.50 : 0.65;
           if (chance(forcePreProb)) {
             const targetDegPre = targ.pre;
             const curOct = Math.floor(localIdx / 7) * 7;
             const curDeg = ((localIdx - curOct) % 7 + 7) % 7;
-
             let deltaPre = targetDegPre - curDeg;
-            if (deltaPre > 3) deltaPre -= 7;
-            if (deltaPre < -3) deltaPre += 7;
+            if (deltaPre > 3) deltaPre -= 7; if (deltaPre < -3) deltaPre += 7;
             localIdx += deltaPre;
             localPendingLT = !!targ.wantLT;
           }
         }
 
         if (localPhraseStep === 15) {
-          const baseProb =
-            (ct === "evaded") ? (0.35 + localTension * 0.20) :
-              (ct === "half") ? 0.78 :
-                (ct === "plagal") ? 0.74 :
-                  (ct === "deceptive") ? 0.86 : 0.90;
-
+          const baseProb = (ct === "evaded") ? (0.35 + localTension * 0.20)
+            : (ct === "half") ? 0.78
+            : (ct === "plagal") ? 0.74
+            : (ct === "deceptive") ? 0.86
+            : 0.90;
           const finalProb = localPendingLT ? Math.min(0.98, baseProb + 0.06) : baseProb;
 
           if (chance(finalProb)) {
             const targetDegEnd = targ.end;
             const curOct = Math.floor(localIdx / 7) * 7;
             const curDeg = ((localIdx - curOct) % 7 + 7) % 7;
-
             let deltaEnd = targetDegEnd - curDeg;
-            if (deltaEnd > 3) deltaEnd -= 7;
-            if (deltaEnd < -3) deltaEnd += 7;
+            if (deltaEnd > 3) deltaEnd -= 7; if (deltaEnd < -3) deltaEnd += 7;
             localIdx += deltaEnd;
           }
 
-          if (ct === "evaded") localTension = Math.max(0, Math.min(1, localTension + 0.18));
-          else if (ct === "half") localTension = Math.max(0, Math.min(1, localTension + 0.08));
-          else if (ct === "deceptive") localTension = Math.max(0, Math.min(1, localTension + 0.06));
-          else if (ct === "plagal") localTension = Math.max(0, Math.min(1, localTension - 0.10));
-          else if (ct === "authentic") localTension = Math.max(0, Math.min(1, localTension - 0.22));
+          if (ct === "evaded") localTension = clamp01(localTension + 0.18);
+          else if (ct === "half") localTension = clamp01(localTension + 0.08);
+          else if (ct === "deceptive") localTension = clamp01(localTension + 0.06);
+          else if (ct === "plagal") localTension = clamp01(localTension - 0.10);
+          else if (ct === "authentic") localTension = clamp01(localTension - 0.22);
 
           localLastCadence = ct;
           clearPendingAfterNote = true;
@@ -1159,19 +1183,19 @@
       }
 
       if (!isCadence) {
-        const anchor = 1;
-        const reg = Math.floor(localIdx / 7);
+        const anchor = 1; const reg = Math.floor(localIdx / 7);
         if (reg < anchor && chance(0.22)) localIdx += 1;
         else if (reg > anchor && chance(0.22)) localIdx -= 1;
       }
-
       if (localIdx > 10) localIdx = 10;
       if (localIdx < -8) localIdx = -8;
 
       const degNow = ((localIdx - Math.floor(localIdx / 7) * 7) % 7 + 7) % 7;
       const wantLT2 = localCadenceTargets(localCadenceType).wantLT;
       const raiseLT = isCadence && wantLT2 && degNow === 6 && (localPhraseStep === 13 || localPhraseStep === 14 || localPendingLT);
+
       let freq = getScaleNote(baseFreq, localIdx, localCircle, localMinor, { raiseLeadingTone: raiseLT });
+      freq = clampFreqMin(freq, NOTE_FLOOR_HZ);
 
       // --- DRONE LOGIC FOR EXPORT ---
       const isArcStart = (localArcPos === 0 && localPhraseStep === 0);
@@ -1180,6 +1204,7 @@
 
       const atPhraseStart = (localPhraseStep === 0 || localPhraseStep === 1);
       const atCadenceZone = (localPhraseStep >= 13);
+
       let pedalProb = 0.0;
       if (atPhraseStart) pedalProb = 0.16;
       else if (atCadenceZone) pedalProb = 0.10 + (localTension * 0.05);
@@ -1203,13 +1228,10 @@
         const pedalIdx = pedalOct * 7 + pedalDegree;
         let pedalFreq = getScaleNote(baseFreq, pedalIdx, localCircle, localMinor);
 
-        if (isArcStart) {
-          while (pedalFreq < 90) pedalFreq *= 2;
-          while (pedalFreq > 220) pedalFreq *= 0.5;
-        } else {
-          while (pedalFreq < 50) pedalFreq *= 2;
-          while (pedalFreq > 110) pedalFreq *= 0.5;
-        }
+        if (isArcStart) { while (pedalFreq < 90) pedalFreq *= 2; while (pedalFreq > 220) pedalFreq *= 0.5; }
+        else { while (pedalFreq < 50) pedalFreq *= 2; while (pedalFreq > 110) pedalFreq *= 0.5; }
+
+        pedalFreq = clampFreqMin(pedalFreq, DRONE_FLOOR_HZ);
 
         const t0 = Math.max(localTime - 0.05, 0);
         let pedalDur = atPhraseStart ? 16.0 : (atCadenceZone ? 12.0 : 7.0);
@@ -1217,9 +1239,15 @@
         if (isClimax) pedalDur = 24.0;
 
         const vol = (isArcStart || isClimax) ? 0.35 : 0.18;
-        scheduleBassPedal(offlineCtx, offlineMaster, offlineSend, pedalFreq, t0, pedalDur, vol);
+
+        if (pedalDur > 20.0) {
+          scheduleDroneChord(offlineCtx, offlineMaster, offlineSend, pedalFreq, t0, pedalDur, vol, localMinor);
+        } else {
+          scheduleBassPedal(offlineCtx, offlineMaster, offlineSend, pedalFreq, t0, pedalDur, vol);
+        }
       }
 
+      // --- MELODY (Export Solo) ---
       if (!isDroneSolo) {
         if (isCadence && localArcPos === localArcClimaxAt && localPhraseStep === 15) {
           scheduleNote(offlineCtx, offlineMaster, offlineSend, freq * 2.0, localTime, appliedDur, 0.35, pressure, localTension);
@@ -1229,18 +1257,16 @@
 
       localModCount++;
       if (clearPendingAfterNote) localPendingLT = false;
-
       localTime += (1 / exportDensity) * (0.95 + rand() * 0.1);
     }
 
     const renderedBuffer = await offlineCtx.startRendering();
     const wavBlob = bufferToWave(renderedBuffer, exportDuration * sampleRate);
-
     const url = URL.createObjectURL(wavBlob);
-    const a = document.createElement("a");
-    a.style.display = "none";
+    const a = document.createElement('a');
+    a.style.display = 'none';
     a.href = url;
-    a.download = `open-final-v148-${Date.now()}.wav`;
+    a.download = `open-final-v146-${Date.now()}.wav`;
     document.body.appendChild(a);
     a.click();
     setTimeout(() => { document.body.removeChild(a); window.URL.revokeObjectURL(url); }, 100);
@@ -1251,7 +1277,6 @@
     const length = len * numOfChan * 2 + 44;
     const buffer = new ArrayBuffer(length);
     const view = new DataView(buffer);
-
     const channels = [];
     const sampleRate = abuffer.sampleRate;
     let offset = 0, pos = 0;
@@ -1284,20 +1309,16 @@
       }
       offset++;
     }
-
     return new Blob([buffer], { type: "audio/wav" });
   }
 
   function setupKeyboardShortcuts() {
-    document.addEventListener("keydown", (e) => {
-      if (e.key.toLowerCase() === "r") toggleRecording();
+    document.addEventListener('keydown', (e) => {
+      if (e.key.toLowerCase() === 'r') toggleRecording();
     });
   }
 
   document.addEventListener("DOMContentLoaded", () => {
-    applyModeClasses();
-    window.addEventListener("hashchange", applyModeClasses);
-
     const playBtn = document.getElementById("playNow");
     const stopBtn = document.getElementById("stop");
 
@@ -1307,30 +1328,32 @@
     applyControls(loadState());
 
     document.getElementById("tone")?.addEventListener("input", (e) => {
-      const v = e.target.value;
       const hz = document.getElementById("hzReadout");
-      if (hz) hz.textContent = v;
+      if (hz) hz.textContent = e.target.value;
       saveState(readControls());
     });
 
+    // FIXED: had a malformed call earlier
     document.getElementById("songDuration")?.addEventListener("change", () => saveState(readControls()));
 
     const recBtn = document.getElementById("record");
     if (recBtn) recBtn.onclick = toggleRecording;
 
-    // Export hook logic: if button exists, wire it up
     const exportBtn = document.getElementById("export");
     if (exportBtn) exportBtn.onclick = renderWavExport;
 
-    // Ensure initial UI state in popout
     if (isPopoutMode()) {
       document.body.classList.add("popout");
       setButtonState("stopped");
-    } else {
-      setButtonState("stopped");
     }
 
-    // Use the centralized launchPlayer logic
-    document.getElementById("launchPlayer")?.addEventListener("click", launchPlayer);
+    document.getElementById("launchPlayer")?.addEventListener("click", () => {
+      if (!isPopoutMode() && isMobileDevice()) {
+        document.body.classList.add("mobile-player");
+        setButtonState("stopped");
+      } else {
+        window.open(`${window.location.href.split("#")[0]}#popout`, "open_player", "width=500,height=680,resizable=yes");
+      }
+    });
   });
 })();
