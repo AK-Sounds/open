@@ -202,6 +202,12 @@
 
   const REVERB_RETURN_LEVEL = 0.80;
 
+  // --- NEW: freq floor + drone level controls ---
+  const LOW_FLOOR_HZ = 80;
+  const MELODY_FLOOR_PROB = 0.75; // "frequently floor"
+  const DRONE_FLOOR_PROB  = 0.90; // floor drones even more often
+  const DRONE_GAIN_MULT   = 0.60; // 40% quieter than before
+
   let isPlaying = false;
   let isEndingNaturally = false;
   let isApproachingEnd = false;
@@ -249,6 +255,36 @@
     return Math.min(d, 7 - d);
   }
   function clamp01(x) { return Math.max(0, Math.min(1, x)); }
+
+  // --- NEW: apply floor to a freq "frequently" ---
+  function applyLowFloor(freq, floorHz, prob) {
+    let f = freq;
+    if (!Number.isFinite(f) || f <= 0) return freq;
+    if (!chance(prob)) return f;
+    while (f < floorHz) f *= 2;
+    return f;
+  }
+
+  // --- NEW: drone is allowed only as a 3rd (major/minor), and only when it "makes sense" ---
+  function allowThirdDrone({ planType, atCadenceZone, phraseStep, tensionAmt, degNow, wantLT, isMinorMode }) {
+    // Avoid thirds when we're pushing functional cadences hard (esp. half/evaded) or when LT is active
+    if (planType === "half" || planType === "evaded") return false;
+    if (wantLT && atCadenceZone && (phraseStep === 14 || phraseStep === 15)) return false;
+    // Avoid if melody is sitting on leading tone or is very tense
+    if (degNow === 6) return false;
+    if (tensionAmt > 0.78) return false;
+
+    // Prefer thirds when phrase is *not* deep in cadence zone, or in softer cadences
+    if (atCadenceZone) {
+      // allow lightly, but only if tension is modest and planType isn't "deceptive" (keeps it from sounding wrong)
+      if (planType === "deceptive") return false;
+      return tensionAmt < 0.55;
+    }
+
+    // In minor: allow more often on gentler sections; in major: generally fine
+    if (isMinorMode) return tensionAmt < 0.70;
+    return true;
+  }
 
   function startNewArc() {
     arcLen = 4 + Math.floor(rand() * 5);
@@ -525,7 +561,6 @@
         else if (isMinor && chance(0.6)) isMinor = false;
       } else {
         const isJourneyMode = (durationInput === "infinite");
-        const dist = Math.abs(localCircle); // localCircle isn't available here, fix:
         const d = Math.abs(circlePosition);
         if (!isJourneyMode && d > 3 && chance(0.8)) {
           circlePosition += (circlePosition > 0 ? -1 : 1);
@@ -589,8 +624,9 @@
 
       if (isApproachingEnd && !isEndingNaturally) {
         if (patternIdxA % 7 === 0) {
-          const freq = getScaleNote(baseFreq, patternIdxA, circlePosition, isMinor);
-          scheduleNote(audioContext, masterGain, reverbSend, freq * 0.5, nextTimeA, 25.0, 0.5, 0, 0);
+          const f0 = getScaleNote(baseFreq, patternIdxA, circlePosition, isMinor);
+          const freqEnd = applyLowFloor(f0 * 0.5, LOW_FLOOR_HZ, MELODY_FLOOR_PROB);
+          scheduleNote(audioContext, masterGain, reverbSend, freqEnd, nextTimeA, 25.0, 0.5, 0, 0);
           beginNaturalEnd();
           return;
         }
@@ -732,8 +768,11 @@
 
       const degNow = ((patternIdxA - Math.floor(patternIdxA / 7) * 7) % 7 + 7) % 7;
       const wantLT2 = cadenceTargets(currentCadenceType).wantLT;
-      const raiseLT = isCadence && wantLT && degNow === 6 && (phraseStep === 13 || phraseStep === 14 || pendingLTResolution);
+      const raiseLT = isCadence && wantLT2 && degNow === 6 && (phraseStep === 13 || phraseStep === 14 || pendingLTResolution);
       let freq = getScaleNote(baseFreq, patternIdxA, circlePosition, isMinor, { raiseLeadingTone: raiseLT });
+
+      // --- NEW: frequently floor melody to ~80 Hz ---
+      freq = applyLowFloor(freq, LOW_FLOOR_HZ, MELODY_FLOOR_PROB);
 
       // --- SIGNPOST & DRONE LOGIC ---
       const isArcStart = (arcPos === 0 && phraseStep === 0);
@@ -752,35 +791,37 @@
       const curRegister = Math.floor(patternIdxA / 7);
       if (curRegister >= 2) pedalProb *= 0.35;
 
-      if (isArcStart || isClimax || chance(pedalProb)) {
-        const planType = currentCadenceType || "authentic";
-        let pedalDegree = 0;
+      // --- NEW: drone pitch can ONLY be the 3rd, and only when it makes harmonic sense ---
+      const planType = currentCadenceType || "authentic";
+      const canThirdDrone = allowThirdDrone({
+        planType,
+        atCadenceZone,
+        phraseStep,
+        tensionAmt: tension,
+        degNow,
+        wantLT: wantLT2,
+        isMinorMode: isMinor
+      });
 
-        if (isArcStart || isClimax) {
-          pedalDegree = 0;
-        } else {
-          if (planType === "half") pedalDegree = 4;
-          else if (planType === "deceptive") pedalDegree = chance(0.6) ? 0 : 5;
-        }
+      if (canThirdDrone && (isArcStart || isClimax || chance(pedalProb))) {
+        // Always the mediant (scale degree 2): major 3rd in major, minor 3rd in minor
+        const pedalDegree = 2;
 
         const pedalOct = Math.min(curRegister - 1, 0);
         const pedalIdx = pedalOct * 7 + pedalDegree;
         let pedalFreq = getScaleNote(baseFreq, pedalIdx, circlePosition, isMinor);
 
-        if (isArcStart) {
-          while (pedalFreq < 90) pedalFreq *= 2;
-          while (pedalFreq > 220) pedalFreq *= 0.5;
-        } else {
-          while (pedalFreq < 50) pedalFreq *= 2;
-          while (pedalFreq > 110) pedalFreq *= 0.5;
-        }
+        // --- NEW: frequently floor drone to ~80 Hz (and keep it from jumping too high) ---
+        pedalFreq = applyLowFloor(pedalFreq, LOW_FLOOR_HZ, DRONE_FLOOR_PROB);
+        while (pedalFreq > 140) pedalFreq *= 0.5;
 
         const t0 = Math.max(nextTimeA - 0.05, audioContext.currentTime);
         let pedalDur = atPhraseStart ? 16.0 : (atCadenceZone ? 12.0 : 7.0);
         if (isArcStart) pedalDur = 32.0;
         if (isClimax) pedalDur = 24.0;
 
-        const vol = (isArcStart || isClimax) ? 0.35 : 0.18;
+        const volBase = (isArcStart || isClimax) ? 0.35 : 0.18;
+        const vol = volBase * DRONE_GAIN_MULT; // 40% quieter
         scheduleBassPedal(audioContext, masterGain, reverbSend, pedalFreq, t0, pedalDur, vol);
       }
 
@@ -1173,6 +1214,9 @@
       const raiseLT = isCadence && wantLT2 && degNow === 6 && (localPhraseStep === 13 || localPhraseStep === 14 || localPendingLT);
       let freq = getScaleNote(baseFreq, localIdx, localCircle, localMinor, { raiseLeadingTone: raiseLT });
 
+      // --- NEW: frequently floor export melody to ~80 Hz ---
+      freq = applyLowFloor(freq, LOW_FLOOR_HZ, MELODY_FLOOR_PROB);
+
       // --- DRONE LOGIC FOR EXPORT ---
       const isArcStart = (localArcPos === 0 && localPhraseStep === 0);
       const isClimax = (localArcPos === localArcClimaxAt && localPhraseStep === 0);
@@ -1188,35 +1232,35 @@
       const curRegister = Math.floor(localIdx / 7);
       if (curRegister >= 2) pedalProb *= 0.35;
 
-      if (isArcStart || isClimax || chance(pedalProb)) {
-        const planType = localCadenceType || "authentic";
-        let pedalDegree = 0;
+      // --- NEW: export drone ONLY as 3rd + harmony check ---
+      const planType = localCadenceType || "authentic";
+      const canThirdDrone = allowThirdDrone({
+        planType,
+        atCadenceZone,
+        phraseStep: localPhraseStep,
+        tensionAmt: localTension,
+        degNow,
+        wantLT: wantLT2,
+        isMinorMode: localMinor
+      });
 
-        if (isArcStart || isClimax) {
-          pedalDegree = 0;
-        } else {
-          if (planType === "half") pedalDegree = 4;
-          else if (planType === "deceptive") pedalDegree = chance(0.6) ? 0 : 5;
-        }
+      if (canThirdDrone && (isArcStart || isClimax || chance(pedalProb))) {
+        const pedalDegree = 2; // mediant only
 
         const pedalOct = Math.min(curRegister - 1, 0);
         const pedalIdx = pedalOct * 7 + pedalDegree;
         let pedalFreq = getScaleNote(baseFreq, pedalIdx, localCircle, localMinor);
 
-        if (isArcStart) {
-          while (pedalFreq < 90) pedalFreq *= 2;
-          while (pedalFreq > 220) pedalFreq *= 0.5;
-        } else {
-          while (pedalFreq < 50) pedalFreq *= 2;
-          while (pedalFreq > 110) pedalFreq *= 0.5;
-        }
+        pedalFreq = applyLowFloor(pedalFreq, LOW_FLOOR_HZ, DRONE_FLOOR_PROB);
+        while (pedalFreq > 140) pedalFreq *= 0.5;
 
         const t0 = Math.max(localTime - 0.05, 0);
         let pedalDur = atPhraseStart ? 16.0 : (atCadenceZone ? 12.0 : 7.0);
         if (isArcStart) pedalDur = 32.0;
         if (isClimax) pedalDur = 24.0;
 
-        const vol = (isArcStart || isClimax) ? 0.35 : 0.18;
+        const volBase = (isArcStart || isClimax) ? 0.35 : 0.18;
+        const vol = volBase * DRONE_GAIN_MULT; // 40% quieter
         scheduleBassPedal(offlineCtx, offlineMaster, offlineSend, pedalFreq, t0, pedalDur, vol);
       }
 
