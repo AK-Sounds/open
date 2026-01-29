@@ -1,12 +1,12 @@
 (() => {
-  const STATE_KEY = "open_player_settings_v156_final";
+  const STATE_KEY = "open_player_settings_v157_production";
 
   // =========================
   // TARGET BEHAVIOR
   // =========================
   const MELODY_FLOOR_HZ = 220;   // A3 (Prevents thumping)
   const DRONE_FLOOR_HZ  = 85;    // F2 (Deep but audible body)
-  const DRONE_GAIN_MULT = 0.70;  // Fixed: 70% volume (was effectively 14% before)
+  const DRONE_GAIN_MULT = 0.70;  // 70% volume for drones
 
   function clampFreqMin(freq, floorHz) {
     while (freq < floorHz) freq *= 2;
@@ -179,7 +179,7 @@
   let lastCadenceType = "none";
   let currentCadenceType = "none";
 
-  // New: Drone Cooldown Tracking to prevent "Mud"
+  // Drone Cooldown
   let lastDroneStart = -9999;
   let lastDroneDur = 0;
 
@@ -303,7 +303,6 @@
 
   // --- MELODY ENGINE ---
   function scheduleNote(ctx, destination, wetSend, freq, time, duration, volume, instability = 0, tensionAmt = 0) {
-    // 1. Enforce Floor (Anti-Thump)
     freq = clampFreqMin(freq, MELODY_FLOOR_HZ);
 
     const numVoices = 2 + Math.floor(rand() * 2);
@@ -361,18 +360,15 @@
 
      // 12-TET Third Ratio
      const thirdRatio = (quality === "min") ? Math.pow(2, 3/12) : Math.pow(2, 4/12);
-     // 12-TET Fifth Ratio (Fixes the "bent" tuning issue)
      const fifthRatio = Math.pow(2, 7/12); 
      
      // Volume: Apply the 0.70 multiplier here
      const vol = baseVolume * DRONE_GAIN_MULT;
 
-     // Weights sum to 1.0 (Balanced)
-     // Root: 0.5, Fifth: 0.3, Third: 0.2
-     
+     // Weights
      scheduleBassVoice(ctx, destination, wetSend, f0, time, duration, vol * 0.5);
      scheduleBassVoice(ctx, destination, wetSend, f0 * fifthRatio, time, duration, vol * 0.3);
-     scheduleBassVoice(ctx, destination, wetSend, f0 * thirdRatio, time, duration, vol * 0.2);
+     scheduleBassVoice(ctx, destination, wetSend, f0 * thirdRatio, time, duration, vol * 0.3); // boosted 3rd visibility
   }
 
   function scheduleBassVoice(ctx, destination, wetSend, freq, time, duration, volume) {
@@ -406,6 +402,12 @@
 
     modulator.start(time); carrier.start(time);
     modulator.stop(time + duration); carrier.stop(time + duration);
+  }
+
+  // --- SINGLE BASS PEDAL ---
+  function scheduleBassPedal(ctx, destination, wetSend, freq, time, duration, volume) {
+      let fSafe = clampFreqMin(freq, DRONE_FLOOR_HZ);
+      scheduleBassVoice(ctx, destination, wetSend, fSafe, time, duration, volume);
   }
 
   function getScaleNote(baseFreq, scaleIndex, circlePos, minorMode, opts = {}) {
@@ -443,6 +445,18 @@
        else circlePosition += (chance(0.5) ? 1 : -1);
        notesSinceModulation = 0;
     }
+  }
+
+  function degreeFromIdx(idx) {
+    const base = Math.floor(idx / 7) * 7;
+    return ((idx - base) % 7 + 7) % 7;
+  }
+
+  function shouldUseThirdDrone({ atCadenceZone, tensionVal, cadenceType, melodyDeg }) {
+    if (atCadenceZone) return false;
+    if (tensionVal >= 0.55) return false;
+    if (cadenceType === "half" || cadenceType === "deceptive" || cadenceType === "evaded") return false;
+    return (melodyDeg === 0 || melodyDeg === 2 || melodyDeg === 4);
   }
 
   function scheduler() {
@@ -494,7 +508,7 @@
       const isCadence = (phraseStep >= 13);
       if (chance(phraseStep === 15 ? 0.85 : 0.2)) appliedDur *= 1.2;
 
-      // --- MELODY MOVEMENT (RESTORED INTELLIGENCE) ---
+      // --- MELODY MOVEMENT ---
       if (isCadence) {
           const targets = [0, 2, 4];
           const currentOctave = Math.floor(patternIdxA / 7) * 7;
@@ -515,7 +529,6 @@
           if (delta > 3) delta -= 7; if (delta < -3) delta += 7;
           patternIdxA = currentOctave + deg + delta;
 
-          // Apply Cadence Targets (V->I etc)
           const ct = currentCadenceType;
           const targ = cadenceTargets(ct);
           if (phraseStep === 15) {
@@ -523,54 +536,60 @@
              const curDeg = ((patternIdxA - curOct) % 7 + 7) % 7;
              let deltaEnd = targ.end - curDeg;
              if (deltaEnd > 3) deltaEnd -= 7; if (deltaEnd < -3) deltaEnd += 7;
-             // High chance to snap to target
              if(chance(0.85)) patternIdxA += deltaEnd;
              
-             // Update Tension based on success
              if(ct === "authentic") tension = clamp01(tension - 0.22);
              else tension = clamp01(tension + 0.10);
              
              lastCadenceType = ct;
           }
       } else {
-          // Non-cadence: wander
           patternIdxA += (rand() < 0.5 ? 1 : -1);
       }
       
       let freq = getScaleNote(baseFreq, patternIdxA, circlePosition, isMinor);
-      
-      // *** ANTI-THUMP: FORCE MELODY UP ***
       freq = clampFreqMin(freq, MELODY_FLOOR_HZ);
 
-      // --- DRONE CHORD LOGIC (Cooldown + Smart Triad) ---
+      // --- SMART DRONE CHORD LOGIC ---
       const isArcStart = (arcPos === 0 && phraseStep === 0);
       const isClimax = (arcPos === arcClimaxAt && phraseStep === 0);
       const atPhraseStart = (phraseStep === 0);
 
-      // Probability
       let droneProb = 0.04;
       if (atPhraseStart) droneProb = 0.18;
       
-      // TRIGGER CONDITION: Probability check AND Cooldown check
       const canStartDrone = (nextTimeA >= lastDroneStart + lastDroneDur * 0.65);
 
       if (canStartDrone && (isArcStart || isClimax || chance(droneProb))) {
-         // Choose root: usually tonic (0), sometimes V or IV if not climax
+         const ct = currentCadenceType || "authentic";
          let droneRootDegree = 0;
-         if (!isArcStart && !isClimax && chance(0.4)) droneRootDegree = 4; // V
+         if (!isArcStart && !isClimax) {
+           if (ct === "half") droneRootDegree = 4;
+           else if (ct === "deceptive") droneRootDegree = chance(0.6) ? 0 : 5;
+           else if (ct === "plagal") droneRootDegree = chance(0.6) ? 3 : 0;
+           else droneRootDegree = 0;
+         }
+
+         const degNow = degreeFromIdx(patternIdxA);
+         const useThirdColor = shouldUseThirdDrone({
+           atCadenceZone: (phraseStep >= 13),
+           tensionVal: tension,
+           cadenceType: ct,
+           melodyDeg: degNow
+         });
+
+         if (!useThirdColor && droneRootDegree !== 0 && chance(0.65)) droneRootDegree = 0;
 
          const curRegister = Math.floor(patternIdxA / 7);
          const droneOct = Math.min(curRegister - 1, 0);
          const droneIdx = droneOct * 7 + droneRootDegree;
          
          let droneRootFreq = getScaleNote(baseFreq, droneIdx, circlePosition, isMinor);
-         // Floor check for drone (85Hz)
          droneRootFreq = clampFreqMin(droneRootFreq, DRONE_FLOOR_HZ);
 
          const t0 = Math.max(nextTimeA - 0.05, audioContext.currentTime);
-         let droneDur = isArcStart ? 32.0 : 22.0; // Longer durations for smooth wash
+         let droneDur = isArcStart ? 32.0 : 22.0; 
          
-         // UPDATE COOLDOWN
          lastDroneStart = t0;
          lastDroneDur = droneDur;
 
@@ -647,13 +666,255 @@
     setButtonState("stopped");
   }
 
-  // (Export logic follows same pattern - simplified here)
-  function renderWavExport() { alert("Export logic matches live playback."); }
+  // =========================
+  // FULL OFFLINE EXPORT (Updated to match v156 logic)
+  // =========================
+  async function renderWavExport() {
+    if (!isPlaying && !audioContext) { alert("Please start playback first."); return; }
+    if (!sessionSnapshot?.seed) { alert("Press Play once first."); return; }
+    setSeed(sessionSnapshot.seed);
+
+    const durationInput = document.getElementById("songDuration")?.value ?? "60";
+    const exportDuration = (durationInput === "infinite") ? 180 : Math.min(180, parseFloat(durationInput));
+    const sampleRate = 44100;
+
+    const offlineCtx = new OfflineAudioContext(2, sampleRate * exportDuration, sampleRate);
+    const offlineMaster = offlineCtx.createGain();
+    offlineMaster.gain.value = 0.3;
+    offlineMaster.connect(offlineCtx.destination);
+
+    const offlinePreDelay = offlineCtx.createDelay(0.1);
+    offlinePreDelay.delayTime.value = 0.045;
+    const offlineReverb = offlineCtx.createConvolver();
+    offlineReverb.buffer = createImpulseResponse(offlineCtx);
+    const offlineReverbLP = offlineCtx.createBiquadFilter();
+    offlineReverbLP.type = "lowpass";
+    offlineReverbLP.frequency.value = 4200;
+    offlineReverbLP.Q.value = 0.7;
+
+    const offlineSend = offlineCtx.createGain();
+    offlineSend.gain.value = 0.0;
+    const offlineReturn = offlineCtx.createGain();
+    offlineReturn.gain.value = REVERB_RETURN_LEVEL;
+
+    offlineSend.connect(offlinePreDelay);
+    offlinePreDelay.connect(offlineReverb);
+    offlineReverb.connect(offlineReverbLP);
+    offlineReverbLP.connect(offlineReturn);
+    offlineReturn.connect(offlineMaster);
+
+    // Mirror variables
+    let localPhraseCount = 0, localArcLen = 6, localArcPos = -1, localArcClimaxAt = 4, localTension = 0.0;
+    let localLastCadence = "none", localCadenceType = "none";
+    
+    // Cooldown mirrors live
+    let localLastDroneStart = -9999;
+    let localLastDroneDur = 0;
+
+    function localStartNewArc(){
+      localArcLen = 4 + Math.floor(rand() * 5);
+      localArcClimaxAt = Math.max(2, localArcLen - 2 - Math.floor(rand() * 2));
+      localArcPos = -1;
+      localTension = Math.max(0, Math.min(1, localTension * 0.4 + 0.05));
+    }
+    localStartNewArc();
+
+    const exportDensity = sessionSnapshot.density;
+    let baseFreq = Number(document.getElementById("tone")?.value ?? 110);
+    if (!Number.isFinite(baseFreq)) baseFreq = 110;
+    baseFreq = Math.max(100, Math.min(200, baseFreq));
+
+    const noteDur = (1 / exportDensity) * 2.5;
+    let localCircle = 0, localMinor = false, localIdx = 0;
+    let localTime = 0, localModCount = 0, localPhraseStep = 15;
+    let localMotifPos = 0, localPendingLT = false;
+
+    // We reuse the live functions for harmony updates if they don't depend on global state
+    // But we need a local version of updateHarmony to affect local variables
+    function localUpdateHarmony() {
+      const r = rand();
+      let pressure = Math.min(1.0, localModCount / 48.0);
+      if (localArcPos === localArcClimaxAt) pressure *= 2.5;
+      if (r < pressure * 0.35) {
+         if (chance(0.2)) localMinor = !localMinor;
+         else localCircle += (chance(0.5) ? 1 : -1);
+         localModCount = 0;
+      }
+    }
+
+    // Reuse cadence logic
+    function localPickCadenceType() {
+      const nearClimax = (localArcPos === localArcClimaxAt);
+      const lateArc = (localArcPos >= localArcLen - 2);
+      let w = { evaded: 0.20, half: 0.28, plagal: 0.12, deceptive: 0.18, authentic: 0.22 };
+      if (localArcPos < localArcClimaxAt) { w.authentic = 0.05; w.evaded += 0.2; w.half += 0.1; }
+      w.authentic += localTension * 0.25; w.deceptive += localTension * 0.10;
+      if (nearClimax) { w.authentic+=0.25; w.deceptive+=0.10; }
+      if (lateArc && localTension > 0.45) { w.authentic+=0.22; }
+      const keys = Object.keys(w); const sum = keys.reduce((a,k)=>a+w[k],0); let r = rand()*sum;
+      for (const k of keys){ r -= w[k]; if (r<=0) return k; }
+      return "authentic";
+    }
+
+    while (localTime < exportDuration - 2.0) {
+      localPhraseStep = (localPhraseStep + 1) % 16;
+      if (localPhraseStep === 0) {
+        localPendingLT = false; localPhraseCount++; localArcPos++;
+        if (localArcPos >= localArcLen) localStartNewArc();
+        localCadenceType = localPickCadenceType();
+      }
+      
+      const isCadence = (localPhraseStep >= 13);
+      let pressure = Math.min(1.0, localModCount / 48.0);
+      localUpdateHarmony();
+
+      const normDensity = clamp01((exportDensity - 0.05) / 0.375);
+      let targetSend = 0.65 - (0.25 * normDensity); 
+      offlineSend.gain.setValueAtTime(targetSend, localTime);
+
+      let appliedDur = noteDur;
+      if (chance(localPhraseStep === 15 ? 0.85 : 0.2)) appliedDur *= 1.2;
+
+      // Melody movement logic
+      if (isCadence) {
+          const targets = [0, 2, 4];
+          const currentOctave = Math.floor(localIdx / 7) * 7;
+          let deg = localIdx - currentOctave;
+          deg = ((deg % 7) + 7) % 7;
+          let best = targets[0];
+          let bestD = circDist(deg, best);
+          for (let i = 1; i < targets.length; i++) {
+            const t = targets[i]; const d = circDist(deg, t);
+            if (d < bestD || (d === bestD && chance(0.5))) { best = t; bestD = d; }
+          }
+          let targetDeg = best;
+          if (!chance(0.6)) {
+            const dir = chance(0.65) ? -1 : 1;
+            targetDeg = (targetDeg + dir + 7) % 7;
+          }
+          let delta = targetDeg - deg;
+          if (delta > 3) delta -= 7; if (delta < -3) delta += 7;
+          localIdx = currentOctave + deg + delta;
+
+          const ct = localCadenceType;
+          const targ = cadenceTargets(ct);
+          if (localPhraseStep === 15) {
+             const curOct = Math.floor(localIdx / 7) * 7;
+             const curDeg = ((localIdx - curOct) % 7 + 7) % 7;
+             let deltaEnd = targ.end - curDeg;
+             if (deltaEnd > 3) deltaEnd -= 7; if (deltaEnd < -3) deltaEnd += 7;
+             if(chance(0.85)) localIdx += deltaEnd;
+             
+             if(ct === "authentic") localTension = clamp01(localTension - 0.22);
+             else localTension = clamp01(localTension + 0.10);
+          }
+      } else {
+          localIdx += (rand() < 0.5 ? 1 : -1);
+      }
+
+      let freq = getScaleNote(baseFreq, localIdx, localCircle, localMinor);
+      freq = clampFreqMin(freq, MELODY_FLOOR_HZ);
+
+      // DRONE LOGIC
+      const isArcStart = (localArcPos === 0 && localPhraseStep === 0);
+      const isClimax = (localArcPos === localArcClimaxAt && localPhraseStep === 0);
+      const atPhraseStart = (localPhraseStep === 0);
+      
+      let droneProb = 0.04;
+      if (atPhraseStart) droneProb = 0.18;
+      
+      const canStartDrone = (localTime >= localLastDroneStart + localLastDroneDur * 0.65);
+
+      if (canStartDrone && (isArcStart || isClimax || chance(droneProb))) {
+         let droneRootDegree = 0;
+         const ct = localCadenceType || "authentic";
+         if (!isArcStart && !isClimax) {
+           if (ct === "half") droneRootDegree = 4;
+           else if (ct === "deceptive") droneRootDegree = chance(0.6) ? 0 : 5;
+           else if (ct === "plagal") droneRootDegree = chance(0.6) ? 3 : 0;
+         }
+
+         const degNow = degreeFromIdx(localIdx);
+         const useThirdColor = shouldUseThirdDrone({
+           atCadenceZone: (localPhraseStep >= 13),
+           tensionVal: localTension,
+           cadenceType: ct,
+           melodyDeg: degNow
+         });
+
+         if (!useThirdColor && droneRootDegree !== 0 && chance(0.65)) droneRootDegree = 0;
+
+         const curRegister = Math.floor(localIdx / 7);
+         const droneOct = Math.min(curRegister - 1, 0);
+         const droneIdx = droneOct * 7 + droneRootDegree;
+         
+         let droneRootFreq = getScaleNote(baseFreq, droneIdx, localCircle, localMinor);
+         droneRootFreq = clampFreqMin(droneRootFreq, DRONE_FLOOR_HZ);
+
+         const t0 = Math.max(localTime - 0.05, 0);
+         let droneDur = isArcStart ? 32.0 : 22.0; 
+         
+         localLastDroneStart = t0;
+         localLastDroneDur = droneDur;
+
+         const baseVol = (isArcStart || isClimax) ? 0.40 : 0.28;
+         const quality = localMinor ? "min" : "maj";
+
+         scheduleDroneChord(offlineCtx, offlineMaster, offlineSend, droneRootFreq, t0, droneDur, baseVol, quality);
+      }
+
+      const isDroneSolo = (localArcPos === 0 && localPhraseStep < 12 && localPhraseCount > 0);
+      if (!isDroneSolo) {
+         if (isCadence && localArcPos === localArcClimaxAt && localPhraseStep === 15) {
+            scheduleNote(offlineCtx, offlineMaster, offlineSend, freq * 2.0, localTime, appliedDur, 0.35, pressure, localTension);
+         }
+         scheduleNote(offlineCtx, offlineMaster, offlineSend, freq, localTime, appliedDur, 0.4, pressure, localTension);
+      }
+
+      localModCount++;
+      localTime += (1 / exportDensity) * (0.95 + rand() * 0.1);
+    }
+
+    const renderedBuffer = await offlineCtx.startRendering();
+    const wavBlob = bufferToWave(renderedBuffer, exportDuration * sampleRate);
+    const url = URL.createObjectURL(wavBlob);
+    const a = document.createElement('a');
+    a.style.display = 'none';
+    a.href = url;
+    a.download = `open-final-v157-${Date.now()}.wav`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { document.body.removeChild(a); window.URL.revokeObjectURL(url); }, 100);
+  }
+
+  function bufferToWave(abuffer, len) {
+    const numOfChan = abuffer.numberOfChannels; const length = len * numOfChan * 2 + 44;
+    const buffer = new ArrayBuffer(length); const view = new DataView(buffer);
+    const channels = []; const sampleRate = abuffer.sampleRate; let offset = 0, pos = 0;
+    function setUint16(data) { view.setUint16(pos, data, true); pos += 2; }
+    function setUint32(data) { view.setUint32(pos, data, true); pos += 4; }
+    setUint32(0x46464952); setUint32(length - 8); setUint32(0x45564157); setUint32(0x20746d66); setUint32(16); setUint16(1); setUint16(numOfChan);
+    setUint32(sampleRate); setUint32(sampleRate * 2 * numOfChan); setUint16(numOfChan * 2); setUint16(16); setUint32(0x61746164); setUint32(length - pos - 4);
+    for (let i = 0; i < numOfChan; i++) channels.push(abuffer.getChannelData(i));
+    while (pos < length) {
+      for (let i = 0; i < numOfChan; i++) {
+        let sample = Math.max(-1, Math.min(1, channels[i][offset]));
+        sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767) | 0;
+        view.setInt16(pos, sample, true);
+        pos += 2;
+      }
+      offset++;
+    }
+    return new Blob([buffer], { type: "audio/wav" });
+  }
+
+  function setupKeyboardShortcuts() {
+    document.addEventListener('keydown', (e) => { 
+      if (e.key.toLowerCase() === 'r') toggleRecording(); 
+    });
+  }
 
   document.addEventListener("DOMContentLoaded", () => {
-    applyModeClasses();
-    window.addEventListener("hashchange", applyModeClasses);
-
     const playBtn = document.getElementById("playNow");
     const stopBtn = document.getElementById("stop");
 
