@@ -1,13 +1,11 @@
 /* ============================================================
-   OPEN — v171_true_drift (2026-01-29)
-   - "Ghost Downbeat": Internal logic starts at step 0, audio at step 1.
-   - "Natural Start": NO forced drone at t=0. Melody emerges from silence.
-   - "Safety": Phrase counters initialized to -1 to prevent mute bug.
-   - AirPlay: Keep BOTH hidden <video> wake anchor + hidden <audio> anchor
+   OPEN — v171_true_drift (2026-01-29) + UI UPDATE (Ghost Buttons)
+   - Audio: FULL COMPLEX ENGINE (Drones, Arcs, Export, AirPlay)
+   - UI: Black/White Fill Logic, Open Animation, Mobile Fix
    ============================================================ */
 
 (() => {
-  const STATE_KEY = "open_player_settings_v171_true_drift";
+  const STATE_KEY = "open_player_settings_v171_ui_fix";
 
   // =========================
   // TARGET BEHAVIOR
@@ -22,7 +20,7 @@
   }
 
   // =========================
-  // VIEW & STATE
+  // VIEW & STATE (Updated for Mobile/Ghost UI)
   // =========================
   function isPopoutMode() { return window.location.hash === "#popout"; }
   function isMobileDevice() {
@@ -36,6 +34,7 @@
   }
 
   function launchPlayer() {
+    // 1. Mobile One-Page Switch
     if (isMobileDevice()) {
       document.body.classList.add("mobile-player");
       window.location.hash = "#popout";
@@ -43,6 +42,8 @@
       setButtonState("stopped");
       return;
     }
+    
+    // 2. Desktop Popout
     const width = 500, height = 680;
     const left = Math.max(0, (window.screen.width / 2) - (width / 2));
     const top = Math.max(0, (window.screen.height / 2) - (height / 2));
@@ -78,13 +79,29 @@
     if (hzReadout) hzReadout.textContent = String(toneVal);
   }
 
+  // --- UPDATED UI LOGIC: Ghost Buttons + ARIA ---
   function setButtonState(state) {
     const playBtn = document.getElementById("playNow");
     const stopBtn = document.getElementById("stop");
     const toneInput = document.getElementById("tone");
-    if (playBtn) playBtn.classList.toggle("filled", state === "playing");
-    if (stopBtn) stopBtn.classList.toggle("filled", state !== "playing");
-    if (toneInput) toneInput.disabled = (state === "playing");
+    
+    const isPlaying = (state === "playing");
+
+    if (playBtn) {
+      // Play is Black (Filled) when playing
+      if (isPlaying) playBtn.classList.add("filled");
+      else playBtn.classList.remove("filled");
+      playBtn.setAttribute("aria-pressed", isPlaying ? "true" : "false");
+    }
+
+    if (stopBtn) {
+      // Stop is Black (Filled) when stopped
+      if (!isPlaying) stopBtn.classList.add("filled");
+      else stopBtn.classList.remove("filled");
+      stopBtn.setAttribute("aria-pressed", !isPlaying ? "true" : "false");
+    }
+
+    if (toneInput) toneInput.disabled = isPlaying;
   }
 
   // =========================
@@ -284,19 +301,13 @@
     reverbLP.connect(reverbReturn);
     reverbReturn.connect(masterGain);
 
-    // Heartbeat (keeps graph alive)
+    // Heartbeat
     const silent = audioContext.createBuffer(1, 1, audioContext.sampleRate);
     const heartbeat = audioContext.createBufferSource();
     heartbeat.buffer = silent;
     heartbeat.loop = true;
     heartbeat.start();
     heartbeat.connect(audioContext.destination);
-
-    // ------------------------------------------------------------
-    // Keep BOTH anchors:
-    // 1) <video> anchor (original wake-lock-ish trick)
-    // 2) <audio> anchor (helps AirPlay discover/play stream)
-    // ------------------------------------------------------------
 
     // (1) Video anchor
     let v = document.getElementById("open-wake-video");
@@ -315,7 +326,7 @@
     v.srcObject = streamDest.stream;
     v.play().catch(() => {});
 
-    // (2) Audio anchor (AirPlay-friendly)
+    // (2) Audio anchor (AirPlay)
     let a = document.getElementById("open-airplay-audio");
     if (!a) {
       a = document.createElement("audio");
@@ -323,8 +334,6 @@
       a.style.display = "none";
       a.autoplay = true;
       a.playsInline = true;
-      // iOS/Safari tends to like "controls" for media routing;
-      // keep hidden but present in DOM. (Display none is fine in many cases.)
       document.body.appendChild(a);
     }
     a.srcObject = streamDest.stream;
@@ -388,7 +397,7 @@
     });
   }
 
-  // --- SMART DRONE CHORD (Condition 3rd + Normalized Weights) ---
+  // --- DRONE CHORD ---
   function scheduleDroneChord(ctx, destination, wetSend, rootFreq, time, duration, baseVolume, quality, includeThird = true) {
     let f0 = clampFreqMin(rootFreq, DRONE_FLOOR_HZ);
 
@@ -478,7 +487,7 @@
   }
 
   // =========================
-  // GHOST PHRASE INIT (State setup only)
+  // GHOST PHRASE INIT
   // =========================
   function silentInitPhraseLive() {
     phraseStep = 15;
@@ -1060,6 +1069,13 @@
       setButtonState("stopped");
     }
 
-    document.getElementById("launchPlayer")?.addEventListener("click", launchPlayer);
+    // UPDATED LAUNCH: Animation + Delay
+    const launchBtn = document.getElementById("launchPlayer");
+    if (launchBtn) {
+      launchBtn.addEventListener("click", () => {
+        launchBtn.classList.add("filled");
+        setTimeout(() => launchPlayer(), 100);
+      });
+    }
   });
 })();
