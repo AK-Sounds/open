@@ -1,18 +1,20 @@
 /* ============================================================
-   OPEN — v171_true_drift (2026-01-29) + UI UPDATE (Ghost Buttons)
-   - Audio: FULL COMPLEX ENGINE (Drones, Arcs, Export, AirPlay)
-   - UI: Black/White Fill Logic, Open Animation, Mobile Fix
+   OPEN — v30 (Hybrid v171 Audio + v29 UI + HARD FLUSH)
+   - Audio: v171 True Drift (Drones, Arcs, Export, AirPlay)
+   - Reverb: Destroys/Recreates node on every play to kill tails.
+   - iOS: Suspends in background to prevent glitching.
+   - UI: Ghost Buttons, Open Animation, Mobile Fix.
    ============================================================ */
 
 (() => {
-  const STATE_KEY = "open_player_settings_v171_ui_fix";
+  const STATE_KEY = "open_player_settings_v30";
 
   // =========================
   // TARGET BEHAVIOR
   // =========================
-  const MELODY_FLOOR_HZ = 220;    // A3 (Prevents thumping)
-  const DRONE_FLOOR_HZ  = 87.31;  // F2 (Precise Pitch)
-  const DRONE_GAIN_MULT = 0.70;   // 70% volume for drones
+  const MELODY_FLOOR_HZ = 220;    
+  const DRONE_FLOOR_HZ  = 87.31;  
+  const DRONE_GAIN_MULT = 0.70;   
 
   function clampFreqMin(freq, floorHz) {
     while (freq < floorHz) freq *= 2;
@@ -20,7 +22,7 @@
   }
 
   // =========================
-  // VIEW & STATE (Updated for Mobile/Ghost UI)
+  // VIEW & STATE
   // =========================
   function isPopoutMode() { return window.location.hash === "#popout"; }
   function isMobileDevice() {
@@ -34,7 +36,6 @@
   }
 
   function launchPlayer() {
-    // 1. Mobile One-Page Switch
     if (isMobileDevice()) {
       document.body.classList.add("mobile-player");
       window.location.hash = "#popout";
@@ -42,8 +43,6 @@
       setButtonState("stopped");
       return;
     }
-    
-    // 2. Desktop Popout
     const width = 500, height = 680;
     const left = Math.max(0, (window.screen.width / 2) - (width / 2));
     const top = Math.max(0, (window.screen.height / 2) - (height / 2));
@@ -79,7 +78,7 @@
     if (hzReadout) hzReadout.textContent = String(toneVal);
   }
 
-  // --- UPDATED UI LOGIC: Ghost Buttons + ARIA ---
+  // --- UI LOGIC (Ghost Buttons) ---
   function setButtonState(state) {
     const playBtn = document.getElementById("playNow");
     const stopBtn = document.getElementById("stop");
@@ -88,14 +87,12 @@
     const isPlaying = (state === "playing");
 
     if (playBtn) {
-      // Play is Black (Filled) when playing
       if (isPlaying) playBtn.classList.add("filled");
       else playBtn.classList.remove("filled");
       playBtn.setAttribute("aria-pressed", isPlaying ? "true" : "false");
     }
 
     if (stopBtn) {
-      // Stop is Black (Filled) when stopped
       if (!isPlaying) stopBtn.classList.add("filled");
       else stopBtn.classList.remove("filled");
       stopBtn.setAttribute("aria-pressed", !isPlaying ? "true" : "false");
@@ -177,6 +174,10 @@
   let reverbNode = null, reverbPreDelay = null;
   let reverbSend = null, reverbReturn = null, reverbLP = null;
   let streamDest = null;
+  
+  // CACHED IMPULSE (So we can rebuild the reverb node cheaply)
+  let cachedImpulseBuffer = null;
+
   const REVERB_RETURN_LEVEL = 0.80;
 
   let isPlaying = false;
@@ -202,11 +203,13 @@
   let lastCadenceType = "none";
   let currentCadenceType = "none";
 
-  // Drone Cooldown
   let lastDroneStart = -9999;
   let lastDroneDur = 0;
 
   function createImpulseResponse(ctx) {
+    // Only generate this once per session to save CPU
+    if (cachedImpulseBuffer) return cachedImpulseBuffer;
+
     const duration = 10.0, decay = 2.8, rate = ctx.sampleRate;
     const length = Math.floor(rate * duration);
     const impulse = ctx.createBuffer(2, length, rate);
@@ -217,6 +220,7 @@
         data[i] = (r() * 2 - 1) * Math.pow(1 - i / length, decay);
       }
     }
+    cachedImpulseBuffer = impulse;
     return impulse;
   }
 
@@ -230,7 +234,6 @@
     tension = clamp01(tension * 0.4 + 0.05);
   }
 
-  // --- HARMONY LOGIC ---
   function cadenceRepeatPenalty(type) {
     if (type !== lastCadenceType) return 0.0;
     if (type === "authentic") return 0.30;
@@ -281,10 +284,10 @@
     streamDest = audioContext.createMediaStreamDestination();
     masterGain.connect(streamDest);
 
+    // Reverb Setup (Node created dynamically in refreshReverb)
     reverbPreDelay = audioContext.createDelay(0.1);
     reverbPreDelay.delayTime.value = 0.045;
-    reverbNode = audioContext.createConvolver();
-    reverbNode.buffer = createImpulseResponse(audioContext);
+    
     reverbLP = audioContext.createBiquadFilter();
     reverbLP.type = "lowpass";
     reverbLP.frequency.value = 4200;
@@ -295,13 +298,15 @@
     reverbReturn = audioContext.createGain();
     reverbReturn.gain.value = REVERB_RETURN_LEVEL;
 
+    // Chain: Send -> PreDelay -> [ReverbNode] -> LP -> Return -> Master
+    // We connect fixed parts here. The Convolver is inserted in refreshReverb()
     reverbSend.connect(reverbPreDelay);
-    reverbPreDelay.connect(reverbNode);
-    reverbNode.connect(reverbLP);
     reverbLP.connect(reverbReturn);
     reverbReturn.connect(masterGain);
 
-    // Heartbeat
+    // Initial Reverb Build
+    refreshReverb();
+
     const silent = audioContext.createBuffer(1, 1, audioContext.sampleRate);
     const heartbeat = audioContext.createBufferSource();
     heartbeat.buffer = silent;
@@ -309,7 +314,6 @@
     heartbeat.start();
     heartbeat.connect(audioContext.destination);
 
-    // (1) Video anchor
     let v = document.getElementById("open-wake-video");
     if (!v) {
       v = document.createElement("video");
@@ -326,7 +330,6 @@
     v.srcObject = streamDest.stream;
     v.play().catch(() => {});
 
-    // (2) Audio anchor (AirPlay)
     let a = document.getElementById("open-airplay-audio");
     if (!a) {
       a = document.createElement("audio");
@@ -342,6 +345,26 @@
     document.addEventListener("keydown", (e) => {
       if (e.key.toLowerCase() === "r") toggleRecording();
     });
+  }
+
+  // --- HARD FLUSH: Destroy & Recreate Convolver ---
+  function refreshReverb() {
+    if (!audioContext) return;
+    
+    // 1. Disconnect old node if exists
+    if (reverbNode) {
+      try { reverbNode.disconnect(); } catch(e) {}
+      reverbNode = null;
+    }
+
+    // 2. Create new node
+    reverbNode = audioContext.createConvolver();
+    reverbNode.buffer = createImpulseResponse(audioContext); // Uses cached buffer
+
+    // 3. Reconnect chain: PreDelay -> Reverb -> LP
+    reverbPreDelay.disconnect();
+    reverbPreDelay.connect(reverbNode);
+    reverbNode.connect(reverbLP);
   }
 
   // --- MELODY ENGINE ---
@@ -523,7 +546,6 @@
       let pressure = Math.min(1.0, notesSinceModulation / 48.0);
       updateHarmonyState(durationInput);
 
-      // --- END LOGIC ---
       if (isApproachingEnd && !isEndingNaturally) {
         if (patternIdxA % 7 === 0) {
           let fEnd = getScaleNote(baseFreq, patternIdxA, circlePosition, isMinor);
@@ -689,6 +711,9 @@
     arcPos = -1;
     arcLen = 6;
     arcClimaxAt = 4;
+
+    // FIX 1: REVERB FLUSH (Destroy & Recreate)
+    refreshReverb();
 
     if (masterGain && audioContext) {
       const t = audioContext.currentTime;
@@ -1039,6 +1064,19 @@
     }
     return new Blob([buffer], { type: "audio/wav" });
   }
+
+  // FIX 2: iOS BACKGROUND SUSPEND (Clean exit on app switch)
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      if (audioContext && audioContext.state === "running") {
+        audioContext.suspend();
+      }
+    } else {
+      if (audioContext && isPlaying && audioContext.state === "suspended") {
+        audioContext.resume();
+      }
+    }
+  });
 
   document.addEventListener("DOMContentLoaded", () => {
     applyModeClasses();
