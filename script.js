@@ -1,7 +1,7 @@
 /* ============================================================
    OPEN — v34 (Complete Hybrid)
    - Audio: "True Drift" v171 (Drones, Arcs, Export, AirPlay)
-   - Fixes: Reverb Flush, Node Killing, iOS Suspend
+   - Fixes: Reverb Flush, Node Killing, iOS Suspend (UPDATED)
    - UI: Ghost Buttons, Open Animation, Mobile Fix
    ============================================================ */
 
@@ -334,6 +334,15 @@
     reverbNode.connect(reverbLP);
   }
 
+  // --- iOS-safe helper (fade master without clicks) ---
+  function fadeMasterTo(target, seconds = 0.10) {
+    if (!masterGain || !audioContext) return;
+    const t = audioContext.currentTime;
+    masterGain.gain.cancelScheduledValues(t);
+    masterGain.gain.setValueAtTime(masterGain.gain.value, t);
+    masterGain.gain.linearRampToValueAtTime(target, t + seconds);
+  }
+
   // --- MELODY SCHEDULING ---
   function scheduleNote(ctx, destination, wetSend, freq, time, duration, volume, instability = 0, tensionAmt = 0) {
     freq = clampFreqMin(freq, MELODY_FLOOR_HZ);
@@ -485,6 +494,14 @@
     if (!isPlaying) return;
     const durationInput = document.getElementById("songDuration")?.value ?? "60";
     const now = audioContext.currentTime;
+
+    // --- iOS APP SWITCH FIX (NO CATCH-UP BURST) ---
+    // If timers are throttled in background, nextTimeA can fall behind.
+    // Clamp it forward so we never "machine-gun" schedule on return.
+    if (nextTimeA < now - 0.25) {
+      nextTimeA = now + 0.05;
+    }
+
     const elapsed = now - sessionStartTime;
     if (durationInput !== "infinite" && elapsed >= parseFloat(durationInput)) isApproachingEnd = true;
 
@@ -902,14 +919,71 @@
     return new Blob([buffer], { type: "audio/wav" });
   }
 
-  // --- iOS SUSPEND (App Switch Fix) ---
-  document.addEventListener("visibilitychange", () => {
-    if (document.hidden) {
-      if (audioContext && audioContext.state === "running") audioContext.suspend();
-    } else {
-      if (audioContext && isPlaying && audioContext.state === "suspended") audioContext.resume();
+  // --- iOS BACKGROUND/FOREGROUND (REPLACES OLD visibilitychange) ---
+  // Goal: prevent timer-throttle "catch-up burst" and avoid audible glitches.
+  let wasPlayingBeforeHide = false;
+  let pausedElapsed = 0;
+
+  function pauseForBackground() {
+    if (!audioContext) return;
+
+    wasPlayingBeforeHide = isPlaying;
+    if (wasPlayingBeforeHide) {
+      pausedElapsed = Math.max(0, audioContext.currentTime - sessionStartTime);
     }
+
+    // Stop scheduling immediately (prevents catch-up on return)
+    isPlaying = false;
+    if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+
+    // Fade out quickly to avoid clicks
+    fadeMasterTo(0.0, 0.10);
+
+    // Suspend after fade
+    setTimeout(() => {
+      try { if (audioContext && audioContext.state === "running") audioContext.suspend?.(); } catch {}
+    }, 140);
+
+    setButtonState("stopped");
+  }
+
+  async function resumeFromBackground() {
+    if (!audioContext) return;
+
+    try { await audioContext.resume?.(); } catch {}
+
+    // Hard cleanup to avoid stale nodes / tails after a background pause
+    killAllActiveNodes();
+    refreshReverb();
+
+    // Reset scheduling to "now" so we never burst-schedule missed time
+    const now = audioContext.currentTime;
+    nextTimeA = now + 0.05;
+
+    // Preserve elapsed time for fixed-duration mode
+    if (wasPlayingBeforeHide) {
+      sessionStartTime = now - pausedElapsed;
+    }
+
+    // Fade back in
+    fadeMasterTo(MASTER_VOL, 0.15);
+
+    if (wasPlayingBeforeHide) {
+      isPlaying = true;
+      if (timerInterval) clearInterval(timerInterval);
+      timerInterval = setInterval(scheduler, 50);
+      setButtonState("playing");
+    }
+  }
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) pauseForBackground();
+    else resumeFromBackground();
   });
+
+  // iOS Safari is more reliable with these in addition to visibilitychange
+  window.addEventListener("pagehide", pauseForBackground);
+  window.addEventListener("pageshow", resumeFromBackground);
 
   document.addEventListener("DOMContentLoaded", () => {
     applyModeClasses();
