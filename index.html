@@ -1,23 +1,197 @@
- <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Open</title>
-  <link rel="stylesheet" href="style.css" />
+  <style>
+    /* --- DESIGN SYSTEM: Minimalist Black & White --- */
+    :root {
+      --bg: #ffffff;
+      --fg: #000000;
+      --focus-blue: #005fcc; /* 508 compliant focus color */
+      --font: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--fg);
+      font-family: var(--font);
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* 508 FIX: High-visibility focus ring for keyboard navigation */
+    button:focus-visible, select:focus-visible, input:focus-visible {
+      outline: 3px solid var(--focus-blue);
+      outline-offset: 3px;
+    }
+
+    main {
+      width: 100%;
+      max-width: 380px;
+      padding: 20px;
+    }
+
+    /* HEADER: "O P E N" Style */
+    h1#popoutTitle {
+      font-weight: 400;
+      font-size: 1.5rem;
+      text-align: center;
+      letter-spacing: 0.4em; /* Wide spacing per screenshot */
+      margin: 0 0 2rem 0;
+      padding-bottom: 1.5rem;
+      border-bottom: 1px solid var(--fg); /* Top Separator Line */
+      text-transform: uppercase;
+      padding-left: 0.4em; /* Visual centering offset for wide spacing */
+    }
+
+    /* CONTROLS SECTION */
+    #controls {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    /* Split Row Layout: Label Left, Input Right */
+    .form-group {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+    }
+
+    label {
+      font-size: 0.9rem;
+      color: var(--fg);
+      white-space: nowrap; /* Prevent wrapping */
+      margin-right: 1rem;
+    }
+
+    /* INPUTS */
+    select {
+      background: #fff;
+      border: 1px solid var(--fg);
+      color: var(--fg);
+      padding: 8px 12px;
+      font-family: inherit;
+      font-size: 0.9rem;
+      border-radius: 0; /* Square corners */
+      cursor: pointer;
+      text-align: right;
+      min-width: 120px;
+      -webkit-appearance: none; /* Removes default OS styling */
+    }
+
+    /* SLIDER styling */
+    input[type="range"] {
+      -webkit-appearance: none;
+      width: 140px; /* Fixed width for alignment */
+      height: 2px;
+      background: var(--fg);
+      outline: none;
+      border: none;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 12px; /* Small square thumb per screenshot style */
+      height: 12px;
+      background: var(--fg);
+      cursor: pointer;
+      border: none;
+      /* 508 FIX: Increased touch target area without changing visual size */
+      box-shadow: 0 0 0 6px rgba(0,0,0,0.01); 
+    }
+
+    /* BUTTONS: Side-by-Side */
+    .form-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+      margin-top: 1rem;
+    }
+
+    button {
+      font-family: inherit;
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      padding: 14px 0;
+      cursor: pointer;
+      border: 1px solid var(--fg);
+      transition: all 0.1s;
+      border-radius: 0; /* Sharp corners */
+    }
+
+    /* PLAY: White with Black Border */
+    #playNow {
+      background: #fff;
+      color: var(--fg);
+    }
+    #playNow:hover { background: #f0f0f0; }
+    /* Active State for 508 logic */
+    #playNow.filled { background: #ddd; } 
+
+    /* STOP: Black with White Text */
+    #stop {
+      background: var(--fg);
+      color: var(--bg);
+    }
+    #stop:hover { opacity: 0.8; }
+
+    /* SEPARATOR & FOOTER */
+    .separator {
+      border: 0;
+      border-top: 1px solid var(--fg);
+      margin: 2rem 0 1.5rem 0;
+    }
+
+    footer#credits {
+      text-align: left; /* Screenshot alignment */
+      font-size: 0.7rem;
+      line-height: 1.6;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* UTILITY: Hidden elements for Screen Readers */
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      border: 0;
+    }
+
+    /* Hiding Launch Button in normal view */
+    #launchOnly { display: none; }
+  </style>
 </head>
 <body>
-  <main>
+
+  <main aria-label="Audio Instrument">
+    
     <section id="launchOnly">
       <div class="launch-actions">
         <button type="button" id="launchPlayer" class="secondary-btn">Open</button>
       </div>
     </section>
 
-    <h1 id="popoutTitle">Open</h1>
+    <h1 id="popoutTitle">O P E N</h1>
 
-    <section id="controls">
-      <form id="songForm">
+    <section id="controls" aria-label="Controls">
+      <form id="songForm" onsubmit="return false;">
+        
         <div class="form-group">
           <label for="songDuration">Duration:</label>
           <select id="songDuration" name="songDuration">
@@ -30,20 +204,25 @@
         </div>
 
         <div class="form-group">
-          <label for="tone">Root Tone: <span id="hzReadout">110</span> Hz</label>
-          <input type="range" id="tone" min="100" max="200" step="1" value="110" />
+          <label id="toneLabel" for="tone">Root Tone: 
+            <output id="hzReadout" for="tone">110</output> Hz
+          </label>
+          <input type="range" id="tone" min="100" max="200" step="1" value="110" aria-labelledby="toneLabel" />
         </div>
 
         <div class="form-actions">
-          <button type="button" id="playNow">Play</button>
-          <button type="button" id="stop">Stop</button>
+          <button type="button" id="playNow" aria-pressed="false">Play</button>
+          <button type="button" id="stop" aria-pressed="true">Stop</button>
         </div>
+
+        <div id="recordStatus" class="sr-only" aria-live="polite"></div>
+
       </form>
     </section>
 
     <hr class="separator" />
 
-    <footer id="credits">
+    <footer id="credits" role="contentinfo">
       <div class="credit-line">By Aaron Koppel</div>
       <div class="credit-line">Stereo Images, 2026</div>
     </footer>
