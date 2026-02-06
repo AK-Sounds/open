@@ -1,193 +1,172 @@
-/* ============================================================
-   OPEN — Shared CSS (Landing + Player)
-   - High contrast (black/white)
-   - Visible focus indicator (508 / WCAG)
-   - Large touch targets
-   - No “display:none” on critical controls
-   ============================================================ */
-
-:root{
-  --bg:#fff;
-  --fg:#000;
-  --focus:#005fcc; /* accessible blue ring */
-  --font:"Helvetica Neue", Helvetica, Arial, sans-serif;
+/* --- DESIGN SYSTEM: Helvetica / Black / White --- */
+:root {
+  --bg: #ffffff;
+  --fg: #000000;
+  --focus-blue: #005fcc;
+  --font: "Helvetica Neue", Helvetica, Arial, sans-serif;
 }
 
-*{ box-sizing:border-box; }
+* { box-sizing: border-box; }
 
-html, body{ height:100%; }
-
-body{
-  margin:0;
-  background:var(--bg);
-  color:var(--fg);
-  font-family:var(--font);
-  -webkit-font-smoothing:antialiased;
-  text-rendering:optimizeLegibility;
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font);
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
 }
 
-.page{
-  width:100%;
-  max-width:520px;
-  margin:0 auto;
-  padding:14vh 24px 48px;
+/* 508 FIX: High-visibility focus ring */
+button:focus-visible, select:focus-visible, input:focus-visible {
+  outline: 3px solid var(--focus-blue);
+  outline-offset: 3px;
 }
 
-@media (max-width: 480px){
-  .page{ padding:12vh 20px 44px; }
+main {
+  width: 100%;
+  max-width: 380px; /* Constraints for controls */
+  padding: 20px;
 }
 
-/* Screen-reader only utility */
-.sr-only{
-  position:absolute !important;
-  width:1px; height:1px;
-  padding:0; margin:-1px;
-  overflow:hidden;
-  clip:rect(0,0,0,0);
-  white-space:nowrap;
-  border:0;
+/* --- TYPOGRAPHY --- */
+h1 {
+  font-family: inherit;
+  font-weight: 400;
+  font-size: 2rem;
+  text-transform: uppercase;
+  letter-spacing: 0.3em;
+  color: var(--fg);
+  text-align: center;
+  padding-left: 0.3em; /* Optical center */
+  margin: 0 0 1.5rem 0;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--fg);
 }
 
-/* Typography: matches your “OPEN” style */
-.title-style{
-  display:block;
-  text-align:center;
-  font-weight:400;
-  font-size:2rem;
-  letter-spacing:0.30em;
-  text-transform:uppercase;
-  padding-left:0.30em; /* optical centering */
-  color:var(--fg);
-  margin:0 0 18px 0;
+/* --- FORMS & CONTROLS --- */
+.form-group {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  margin-bottom: 1.5rem;
 }
 
-/* Landing link should look like a button-ish link but remain a link */
-.launch-link{
-  text-decoration:underline;
-  text-underline-offset:0.18em;
+label {
+  font-size: 1rem;
+  white-space: nowrap;
+  margin-right: 1rem;
 }
 
-/* Separator line */
-.separator{
-  border:0;
-  border-top:1px solid var(--fg);
-  margin:10px 0 28px;
+select {
+  background: #fff;
+  border: 1px solid var(--fg);
+  color: var(--fg);
+  padding: 8px 12px;
+  font-family: inherit;
+  font-size: 1rem;
+  border-radius: 0;
+  cursor: pointer;
+  text-align: right;
+  min-width: 120px;
+  -webkit-appearance: none;
 }
 
-/* Forms */
-.form-group{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:16px;
-  margin:18px 0;
+input[type="range"] {
+  -webkit-appearance: none;
+  width: 140px;
+  height: 2px;
+  background: var(--fg);
+  outline: none;
+  border: none;
 }
 
-label{
-  font-size:1rem;
-  line-height:1.2;
-  white-space:nowrap;
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  background: var(--fg);
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 0 0 6px rgba(0,0,0,0.01); 
 }
 
-select{
-  min-width:140px;
+/* --- BUTTONS --- */
+.launch-actions {
+  display: flex;
+  justify-content: center;
 }
 
-/* Shared control styling */
-button, select, input{
-  font:inherit;
-  color:var(--fg);
-  background:var(--bg);
-  border:1px solid var(--fg);
-  border-radius:0;
+.form-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+  margin-top: 1rem;
 }
 
-/* Visible focus ring (use :focus-visible when supported) */
-button:focus-visible,
-select:focus-visible,
-input:focus-visible,
-a:focus-visible{
-  outline:3px solid var(--focus);
-  outline-offset:3px;
+button {
+  background: #fff;
+  color: var(--fg);
+  border: 1px solid var(--fg);
+  cursor: pointer;
+  border-radius: 0;
+  transition: all 0.1s;
+  font-family: inherit;
+  text-transform: uppercase;
 }
 
-/* Fallback for browsers without :focus-visible */
-button:focus,
-select:focus,
-input:focus,
-a:focus{
-  outline:3px solid var(--focus);
-  outline-offset:3px;
+/* Launch Button Specifics */
+#launchPlayer {
+  padding: 25px 50px;
+  font-size: 2rem;
+  font-weight: 400;
+  letter-spacing: 0.3em;
+  padding-left: calc(50px + 0.3em);
+}
+#launchPlayer:hover { background: #f0f0f0; }
+
+/* Control Buttons */
+#playNow, #stop {
+  font-size: 0.9rem;
+  letter-spacing: 0.1em;
+  padding: 15px 0;
 }
 
-/* Range slider: keep it simple + high contrast */
-input[type="range"]{
-  -webkit-appearance:none;
-  appearance:none;
-  width:180px;
-  height:2px;
-  border:none;
-  background:var(--fg);
+/* Ghost Button Logic */
+button.filled {
+  background: var(--fg) !important;
+  color: var(--bg) !important;
+  font-weight: bold;
+}
+button:not(.filled) {
+  background: #fff !important;
+  color: var(--fg) !important;
+  font-weight: normal;
+}
+button:hover { opacity: 0.8; }
+
+/* --- FOOTER --- */
+.separator {
+  border: 0;
+  border-top: 1px solid var(--fg);
+  margin: 2rem 0 1.5rem 0;
 }
 
-input[type="range"]::-webkit-slider-thumb{
-  -webkit-appearance:none;
-  width:16px; height:16px;
-  background:var(--fg);
-  border:none;
+footer {
+  font-size: 0.75rem;
+  line-height: 1.5;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
-input[type="range"]::-moz-range-thumb{
-  width:16px; height:16px;
-  background:var(--fg);
-  border:none;
-}
-
-input[type="range"]::-moz-range-track{
-  height:2px;
-  background:var(--fg);
-}
-
-/* Transport buttons */
-.form-actions{
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:14px;
-  margin-top:22px;
-}
-
-button{
-  padding:14px 0;
-  text-transform:uppercase;
-  letter-spacing:0.10em;
-  cursor:pointer;
-  min-height:44px; /* touch target */
-}
-
-button:hover{ opacity:0.85; }
-
-button.filled{
-  background:var(--fg);
-  color:var(--bg);
-  font-weight:700;
-}
-
-button:not(.filled){
-  background:var(--bg);
-  color:var(--fg);
-  font-weight:400;
-}
-
-/* Disabled inputs */
-input:disabled{
-  opacity:0.6;
-}
-
-/* Credits */
-.credits{
-  margin-top:34px;
-  font-size:0.85rem;
-  line-height:1.5;
-  text-transform:uppercase;
-  letter-spacing:0.05em;
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); border: 0;
 }
