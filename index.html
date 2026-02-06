@@ -1,3 +1,4 @@
+<!-- index.html (LAUNCHER PAGE) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6,18 +7,46 @@
   <title>Open</title>
   <link rel="stylesheet" href="style.css" />
 </head>
-<body>
-  <main class="page" aria-labelledby="title">
-    <h1 id="title" class="sr-only">Open</h1>
+<body class="launcher">
+  <main class="shell" aria-labelledby="launchHeading">
+    <h1 id="launchHeading" class="sr-only">Open Audio Player</h1>
 
-    <a class="launch-link title-style" href="player.html" id="openLink">Open</a>
-
-    <footer class="credits" aria-label="Credits">
-      <div>By Aaron Koppel</div>
-      <div>Stereo Images, 2026</div>
-    </footer>
+    <section class="launchOnly">
+      <div class="launch-actions">
+        <button type="button" id="launchPlayer" class="btn btn-launch">Open</button>
+      </div>
+      <p class="hint" id="launchHint">
+        Opens the player in a separate window on desktop. On mobile, opens in the same tab.
+      </p>
+    </section>
   </main>
 
-  <script src="script.js"></script>
+  <script>
+    (() => {
+      function isMobileDevice() {
+        return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent || "") ||
+          (window.matchMedia?.("(pointer: coarse)")?.matches && window.matchMedia?.("(max-width: 820px)")?.matches);
+      }
+
+      function openPlayer() {
+        if (isMobileDevice()) {
+          // Mobile: same tab
+          window.location.href = "player.html";
+          return;
+        }
+        // Desktop: popout window
+        const width = 520, height = 720;
+        const left = Math.max(0, (window.screen.width / 2) - (width / 2));
+        const top = Math.max(0, (window.screen.height / 2) - (height / 2));
+        window.open(
+          "player.html",
+          "open_player",
+          `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=no,status=no`
+        );
+      }
+
+      document.getElementById("launchPlayer")?.addEventListener("click", openPlayer);
+    })();
+  </script>
 </body>
 </html>
