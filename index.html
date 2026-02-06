@@ -7,20 +7,17 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <main class="wrap" aria-labelledby="launchHeading">
-    <h1 id="launchHeading" class="sr-only">Open Audio Player</h1>
+  <main class="page" aria-labelledby="title">
+    <h1 id="title" class="sr-only">Open</h1>
 
-    <section class="launchOnly">
-      <div class="launch-actions">
-        <!-- Separate page navigation (no popout/hash mode) -->
-        <a class="launch-link" href="player.html">Open</a>
-      </div>
-    </section>
+    <a class="launch-link title-style" href="player.html" id="openLink">Open</a>
 
-    <footer class="credits" role="contentinfo">
-      <div class="credit-line">By Aaron Koppel</div>
-      <div class="credit-line">Stereo Images, 2026</div>
+    <footer class="credits" aria-label="Credits">
+      <div>By Aaron Koppel</div>
+      <div>Stereo Images, 2026</div>
     </footer>
   </main>
+
+  <script src="script.js"></script>
 </body>
 </html>
