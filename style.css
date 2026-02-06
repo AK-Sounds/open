@@ -1,16 +1,15 @@
 /* ============================================================
-   OPEN — v171_true_drift (CSS, 508-friendly)
-   - Strong visible focus indicator
-   - SR-only utility
-   - Large hit targets (>=44px)
-   - Reduced motion support
-   - Hides Record/Export UI (hotkeys only)
+   OPEN — Shared CSS (Landing + Player)
+   - High contrast (black/white)
+   - Visible focus indicator (508 / WCAG)
+   - Large touch targets
+   - No “display:none” on critical controls
    ============================================================ */
 
 :root{
-  --bg:#ffffff;
-  --fg:#000000;
-  --focus:#005fcc;
+  --bg:#fff;
+  --fg:#000;
+  --focus:#005fcc; /* accessible blue ring */
   --font:"Helvetica Neue", Helvetica, Arial, sans-serif;
 }
 
@@ -27,15 +26,18 @@ body{
   text-rendering:optimizeLegibility;
 }
 
-/* Layout */
-main{
+.page{
   width:100%;
   max-width:520px;
-  margin:15vh auto 0 auto;
-  padding:0 2rem 3rem 2rem;
+  margin:0 auto;
+  padding:14vh 24px 48px;
 }
 
-/* ---------- Accessibility utilities ---------- */
+@media (max-width: 480px){
+  .page{ padding:12vh 20px 44px; }
+}
+
+/* Screen-reader only utility */
 .sr-only{
   position:absolute !important;
   width:1px; height:1px;
@@ -46,183 +48,146 @@ main{
   border:0;
 }
 
-/* High-visibility focus ring */
-a:focus-visible,
-button:focus-visible,
-select:focus-visible,
-input:focus-visible{
-  outline:3px solid var(--focus);
-  outline-offset:3px;
-}
-
-/* Respect reduced motion */
-@media (prefers-reduced-motion: reduce){
-  *{
-    transition:none !important;
-    animation:none !important;
-    scroll-behavior:auto !important;
-  }
-}
-
-/* ---------- View switching ----------
-   If you keep hash popout behavior, JS toggles .popout
-*/
-#controls, #credits, #popoutTitle, .separator{ display:none; }
-#launchOnly{ display:block; }
-
-body.mobile-player #launchOnly,
-body.popout #launchOnly{ display:none; }
-
-body.mobile-player #controls,
-body.popout #controls,
-body.mobile-player #credits,
-body.popout #credits,
-body.mobile-player #popoutTitle,
-body.popout #popoutTitle,
-body.mobile-player .separator,
-body.popout .separator{ display:block; }
-
-/* ---------- Typography ---------- */
+/* Typography: matches your “OPEN” style */
 .title-style{
-  font-family:inherit;
+  display:block;
+  text-align:center;
   font-weight:400;
   font-size:2rem;
+  letter-spacing:0.30em;
   text-transform:uppercase;
-  letter-spacing:0.3em;
-  text-align:center;
-  padding-left:0.3em; /* optical centering */
-  margin:0 0 1.5rem 0;
-  border-bottom:1px solid var(--fg);
-  padding-bottom:1rem;
+  padding-left:0.30em; /* optical centering */
+  color:var(--fg);
+  margin:0 0 18px 0;
 }
 
-/* ---------- Forms ---------- */
+/* Landing link should look like a button-ish link but remain a link */
+.launch-link{
+  text-decoration:underline;
+  text-underline-offset:0.18em;
+}
+
+/* Separator line */
+.separator{
+  border:0;
+  border-top:1px solid var(--fg);
+  margin:10px 0 28px;
+}
+
+/* Forms */
 .form-group{
   display:flex;
-  justify-content:space-between;
   align-items:center;
-  gap:1rem;
-  margin-bottom:1.5rem;
+  justify-content:space-between;
+  gap:16px;
+  margin:18px 0;
 }
 
 label{
   font-size:1rem;
-  color:var(--fg);
+  line-height:1.2;
   white-space:nowrap;
 }
 
-/* Inputs baseline */
-input, select, button{
-  font-family:inherit;
-  -webkit-appearance:none;
-  appearance:none;
+select{
+  min-width:140px;
+}
+
+/* Shared control styling */
+button, select, input{
+  font:inherit;
+  color:var(--fg);
+  background:var(--bg);
+  border:1px solid var(--fg);
   border-radius:0;
 }
 
-/* Select */
-select{
-  background:#fff;
-  border:1px solid var(--fg);
-  color:var(--fg);
-  padding:10px 12px;
-  font-size:1rem;
-  min-width:140px;
-  cursor:pointer;
+/* Visible focus ring (use :focus-visible when supported) */
+button:focus-visible,
+select:focus-visible,
+input:focus-visible,
+a:focus-visible{
+  outline:3px solid var(--focus);
+  outline-offset:3px;
 }
 
-/* Slider */
-input[type="range"]{
-  width:160px;
-  height:2px;
-  background:var(--fg);
-  border:none;
-  outline:none;
-  padding:0;
-  cursor:pointer;
+/* Fallback for browsers without :focus-visible */
+button:focus,
+select:focus,
+input:focus,
+a:focus{
+  outline:3px solid var(--focus);
+  outline-offset:3px;
 }
+
+/* Range slider: keep it simple + high contrast */
+input[type="range"]{
+  -webkit-appearance:none;
+  appearance:none;
+  width:180px;
+  height:2px;
+  border:none;
+  background:var(--fg);
+}
+
 input[type="range"]::-webkit-slider-thumb{
   -webkit-appearance:none;
-  width:16px;
-  height:16px;
+  width:16px; height:16px;
   background:var(--fg);
   border:none;
-  cursor:pointer;
-  margin-top:-7px;
-  box-shadow:0 0 0 8px rgba(0,0,0,0.01);
 }
 
-/* Buttons */
+input[type="range"]::-moz-range-thumb{
+  width:16px; height:16px;
+  background:var(--fg);
+  border:none;
+}
+
+input[type="range"]::-moz-range-track{
+  height:2px;
+  background:var(--fg);
+}
+
+/* Transport buttons */
 .form-actions{
   display:grid;
   grid-template-columns:1fr 1fr;
-  gap:15px;
-  margin-top:1.25rem;
+  gap:14px;
+  margin-top:22px;
 }
 
-#launchPlayer{
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  width:100%;
-  min-height:56px; /* >=44px */
-  background:#fff;
-  color:var(--fg);
-  border:1px solid var(--fg);
-  cursor:pointer;
-
-  font-size:2rem;
-  font-weight:400;
-  letter-spacing:0.3em;
-  text-transform:uppercase;
-
-  padding:18px 20px;
-  padding-left:calc(20px + 0.3em);
-}
-#launchPlayer:hover{ background:#f0f0f0; }
-
-#playNow, #stop{
-  min-height:48px; /* >=44px */
-  font-size:0.9rem;
-  text-transform:uppercase;
-  letter-spacing:0.1em;
+button{
   padding:14px 0;
+  text-transform:uppercase;
+  letter-spacing:0.10em;
   cursor:pointer;
-  border:1px solid var(--fg);
-  transition:opacity 0.1s;
-}
-
-/* Ghost button logic:
-   - .filled means active/selected
-*/
-button.filled{
-  background:var(--fg) !important;
-  color:var(--bg) !important;
-  font-weight:700;
-}
-button:not(.filled){
-  background:#fff !important;
-  color:var(--fg) !important;
-  font-weight:400;
+  min-height:44px; /* touch target */
 }
 
 button:hover{ opacity:0.85; }
 
-/* Separator & footer */
-.separator{
-  margin:2.25rem 0 1.5rem 0;
-  border:0;
-  border-top:1px solid var(--fg);
+button.filled{
+  background:var(--fg);
+  color:var(--bg);
+  font-weight:700;
 }
 
-#credits{
-  text-align:left;
-  font-size:0.75rem;
+button:not(.filled){
+  background:var(--bg);
+  color:var(--fg);
+  font-weight:400;
+}
+
+/* Disabled inputs */
+input:disabled{
+  opacity:0.6;
+}
+
+/* Credits */
+.credits{
+  margin-top:34px;
+  font-size:0.85rem;
   line-height:1.5;
   text-transform:uppercase;
   letter-spacing:0.05em;
-}
-
-/* Hide Record/Export controls if present in HTML */
-#record, #export, #recordStatus{
-  display:none !important;
 }
