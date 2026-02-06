@@ -4,226 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Open</title>
-  <style>
-    /* --- DESIGN SYSTEM: Helvetica / Black / White --- */
-    :root {
-      --bg: #ffffff;
-      --fg: #000000;
-      --focus-blue: #005fcc;
-      --font: "Helvetica Neue", Helvetica, Arial, sans-serif;
-    }
-
-    body {
-      background: var(--bg);
-      color: var(--fg);
-      font-family: var(--font);
-      margin: 0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-      overflow: hidden;
-      -webkit-font-smoothing: antialiased;
-    }
-
-    /* 508 FIX: High-visibility focus ring */
-    button:focus-visible, select:focus-visible, input:focus-visible {
-      outline: 3px solid var(--focus-blue);
-      outline-offset: 3px;
-    }
-
-    main {
-      width: 100%;
-      max-width: 380px; /* Original "Dimensions" constraint */
-      padding: 20px;
-    }
-
-    /* --- TYPOGRAPHY SHARED STYLES --- */
-    /* This class ensures the Button and the Title match exactly */
-    .title-style {
-      font-family: inherit;
-      font-weight: 400;
-      font-size: 2rem;
-      text-transform: uppercase;
-      letter-spacing: 0.3em;
-      color: var(--fg);
-      text-align: center;
-      padding-left: 0.3em; /* Optical centering for wide spacing */
-    }
-
-    /* --- HOMEPAGE (Launch View) --- */
-    #launchOnly { 
-      text-align: center; 
-      /* Center vertically in the viewport space */
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      min-height: 200px; 
-    }
-
-    .launch-actions {
-      display: flex;
-      justify-content: center;
-    }
-
-    /* THE LAUNCH BUTTON */
-    #launchPlayer {
-      background: #fff;
-      border: 1px solid var(--fg);
-      cursor: pointer;
-      border-radius: 0;
-      padding: 25px 50px; /* Big touch target */
-      transition: background 0.1s;
-      
-      /* Matching the Title Typography */
-      font-size: 2rem;
-      font-weight: 400;
-      letter-spacing: 0.3em;
-      text-transform: uppercase;
-      padding-left: calc(50px + 0.3em); /* Optical centering */
-    }
-    #launchPlayer:hover { background: #f0f0f0; }
-
-    /* --- PLAYER VIEW (Popout) --- */
-    h1#popoutTitle {
-      margin: 0 0 1.5rem 0;
-      padding-bottom: 1rem;
-      border-bottom: 1px solid var(--fg);
-    }
-
-    #controls {
-      display: flex;
-      flex-direction: column;
-      gap: 1.5rem;
-    }
-
-    .form-group {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      width: 100%;
-    }
-
-    label {
-      font-size: 1rem;
-      color: var(--fg);
-      white-space: nowrap;
-      margin-right: 1rem;
-    }
-
-    select {
-      background: #fff;
-      border: 1px solid var(--fg);
-      color: var(--fg);
-      padding: 8px 12px;
-      font-family: inherit;
-      font-size: 1rem;
-      border-radius: 0;
-      cursor: pointer;
-      text-align: right;
-      min-width: 120px;
-      -webkit-appearance: none;
-    }
-
-    input[type="range"] {
-      -webkit-appearance: none;
-      width: 140px;
-      height: 2px;
-      background: var(--fg);
-      outline: none;
-      border: none;
-    }
-
-    input[type="range"]::-webkit-slider-thumb {
-      -webkit-appearance: none;
-      width: 14px;
-      height: 14px;
-      background: var(--fg);
-      cursor: pointer;
-      border: none;
-      box-shadow: 0 0 0 6px rgba(0,0,0,0.01); 
-    }
-
-    .form-actions {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 15px;
-      margin-top: 1rem;
-    }
-
-    /* PLAYER BUTTONS */
-    #playNow, #stop {
-      font-family: inherit;
-      font-size: 0.9rem;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-      padding: 15px 0;
-      cursor: pointer;
-      border: 1px solid var(--fg);
-      border-radius: 0;
-      transition: all 0.1s;
-    }
-
-    /* Logic: Default State */
-    #playNow { background: #fff; color: var(--fg); }
-    #stop { background: var(--fg); color: var(--bg); font-weight: bold; } /* Default Stopped = Filled */
-
-    /* Active State (Toggled via JS class "filled") */
-    button.filled {
-      background: var(--fg) !important;
-      color: var(--bg) !important;
-      font-weight: bold;
-    }
-    button:not(.filled) {
-      background: #fff !important;
-      color: var(--fg) !important;
-      font-weight: normal;
-    }
-
-    button:hover { opacity: 0.8; }
-
-    .separator {
-      border: 0;
-      border-top: 1px solid var(--fg);
-      margin: 2rem 0 1.5rem 0;
-    }
-
-    footer#credits {
-      text-align: left;
-      font-size: 0.75rem;
-      line-height: 1.5;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-
-    /* UTILITIES */
-    .sr-only {
-      position: absolute;
-      width: 1px; height: 1px; padding: 0; margin: -1px;
-      overflow: hidden; clip: rect(0, 0, 0, 0); border: 0;
-    }
-
-    /* STATE MANAGEMENT */
-    body:not(.popout) #controls,
-    body:not(.popout) #popoutTitle,
-    body:not(.popout) .separator,
-    body:not(.popout) #credits { display: none; }
-
-    body.popout #launchOnly { display: none; }
-    
-    body.mobile-player #launchOnly { display: none; }
-    body.mobile-player #controls, 
-    body.mobile-player #popoutTitle,
-    body.mobile-player #credits,
-    body.mobile-player .separator { display: block; }
-  </style>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <main aria-label="Audio Instrument">
-    
-    <section id="launchOnly">
-      <h1 class="sr-only">Open Audio Player</h1>
+  <main>
+    <section id="launchOnly" aria-labelledby="launchHeading">
+      <h1 id="launchHeading" class="sr-only">Open Audio Player</h1>
       <div class="launch-actions">
         <button type="button" id="launchPlayer" class="secondary-btn">Open</button>
       </div>
@@ -233,7 +19,6 @@
 
     <section id="controls" aria-label="Controls">
       <form id="songForm" onsubmit="return false;">
-        
         <div class="form-group">
           <label for="songDuration">Duration:</label>
           <select id="songDuration" name="songDuration">
@@ -246,29 +31,38 @@
         </div>
 
         <div class="form-group">
-          <label id="toneLabel" for="tone">Root Tone: 
-            <span id="hzReadout" role="status">110</span> Hz
+          <label id="toneLabel" for="tone">
+            Root Tone: <span id="hzReadout" aria-hidden="true">110</span> Hz
           </label>
-          <input type="range" id="tone" min="100" max="200" step="1" value="110" aria-labelledby="toneLabel" />
+          <input
+            type="range"
+            id="tone"
+            min="100"
+            max="200"
+            step="1"
+            value="110"
+            aria-labelledby="toneLabel"
+          />
         </div>
 
         <div class="form-actions">
-          <button type="button" id="playNow" aria-pressed="false">Play</button>
-          <button type="button" id="stop" class="filled" aria-pressed="true">Stop</button>
+          <button type="button" id="playNow">Play</button>
+          <button type="button" id="stop" class="filled">Stop</button>
         </div>
       </form>
     </section>
 
-    <div id="recordStatus" class="sr-only" aria-live="polite"></div>
+    <!-- Live region for state announcements (not spammy) -->
+    <div id="playerStatus" class="sr-only" aria-live="polite">Stopped</div>
 
     <hr class="separator" />
 
-    <footer id="credits" role="contentinfo">
+    <footer id="credits">
       <div class="credit-line">By Aaron Koppel</div>
       <div class="credit-line">Stereo Images, 2026</div>
     </footer>
-  </main>
 
-  <script src="script.js"></script>
+    <script src="script.js"></script>
+  </main>
 </body>
 </html>
