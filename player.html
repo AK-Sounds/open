@@ -7,8 +7,8 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <main aria-label="Audio Instrument">
-    <h1 id="popoutTitle" class="title-style">Open</h1>
+  <main class="wrap" aria-labelledby="playerTitle">
+    <h1 id="playerTitle" class="title-style">Open</h1>
 
     <section id="controls" aria-label="Controls">
       <form id="songForm" onsubmit="return false;">
@@ -38,24 +38,30 @@
           />
         </div>
 
-        <div class="form-actions">
+        <div class="form-actions" role="group" aria-label="Transport">
           <button type="button" id="playNow" aria-pressed="false">Play</button>
           <button type="button" id="stop" class="filled" aria-pressed="true">Stop</button>
+        </div>
+
+        <div class="form-actions" role="group" aria-label="Capture and Export">
+          <button type="button" id="record" aria-pressed="false">Record</button>
+          <button type="button" id="export">Export WAV</button>
         </div>
       </form>
     </section>
 
-    <!-- Live region for state announcements -->
+    <!-- Live regions for accessibility -->
     <div id="playerStatus" class="sr-only" aria-live="polite">Stopped</div>
+    <div id="recordStatus" class="sr-only" aria-live="polite"></div>
 
     <hr class="separator" />
 
-    <footer id="credits" role="contentinfo">
+    <footer class="credits" role="contentinfo">
       <div class="credit-line">By Aaron Koppel</div>
       <div class="credit-line">Stereo Images, 2026</div>
     </footer>
-
-    <script src="script.js"></script>
   </main>
+
+  <script src="script.js"></script>
 </body>
 </html>
