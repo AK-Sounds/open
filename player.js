@@ -518,27 +518,9 @@
       filter.connect(destination);
       filter.connect(wetSend);
 
-      modulator.start(time);
-      carrier.start(time);
-      modulator.stop(time + duration);
-      carrier.stop(time + duration);
+      modulator.start(time); carrier.start(time);
+      modulator.stop(time + duration); carrier.stop(time + duration);
     });
-  }
-
-  function scheduleDroneChord(ctx, destination, wetSend, rootFreq, time, duration, baseVolume, quality, includeThird = true) {
-    let f0 = clampFreqMin(rootFreq, DRONE_FLOOR_HZ);
-
-    const thirdRatio = (quality === "min") ? Math.pow(2, 3/12) : Math.pow(2, 4/12);
-    const fifthRatio = Math.pow(2, 7/12);
-
-    const vol = baseVolume * DRONE_GAIN_MULT;
-
-    scheduleBassVoice(ctx, destination, wetSend, f0, time, duration, vol * 0.50);
-    scheduleBassVoice(ctx, destination, wetSend, f0 * fifthRatio, time, duration, vol * 0.30);
-
-    if (includeThird) {
-      scheduleBassVoice(ctx, destination, wetSend, f0 * thirdRatio, time, duration, vol * 0.20);
-    }
   }
 
   function scheduleBassVoice(ctx, destination, wetSend, freq, time, duration, volume) {
@@ -576,10 +558,22 @@
     lp.connect(destination);
     lp.connect(wetSend);
 
-    modulator.start(time);
-    carrier.start(time);
-    modulator.stop(time + duration);
-    carrier.stop(time + duration);
+    modulator.start(time); carrier.start(time);
+    modulator.stop(time + duration); carrier.stop(time + duration);
+  }
+
+  function scheduleDroneChord(ctx, destination, wetSend, rootFreq, time, duration, baseVolume, quality, includeThird) {
+    let f0 = clampFreqMin(rootFreq, DRONE_FLOOR_HZ);
+    const fifth = Math.pow(2, 7/12);
+    const vol = baseVolume * DRONE_GAIN_MULT;
+
+    scheduleBassVoice(ctx, destination, wetSend, f0, time, duration, vol * 0.50);
+    scheduleBassVoice(ctx, destination, wetSend, f0 * fifth, time, duration, vol * 0.30);
+
+    if (includeThird) {
+      const third = (quality === "min") ? Math.pow(2, 3/12) : Math.pow(2, 4/12);
+      scheduleBassVoice(ctx, destination, wetSend, f0 * third, time, duration, vol * 0.20);
+    }
   }
 
   // =========================
@@ -597,10 +591,10 @@
   function scheduler() {
     if (!isPlaying || !audioContext || !bus) return;
 
+    const durationInput = $("songDuration")?.value ?? "60";
     const now = audioContext.currentTime;
     const boundary = now + LOOKAHEAD;
 
-    const durationInput = $("songDuration")?.value ?? "60";
     const elapsed = now - sessionStartTime;
     if (durationInput !== "infinite" && elapsed >= parseFloat(durationInput)) isApproachingEnd = true;
 
@@ -621,21 +615,19 @@
     while (nextTimeA < boundary) {
       if (events++ > MAX_EVENTS_PER_TICK) break;
 
-      let appliedDur = noteDur;
-
-      let pressure = Math.min(1.0, notesSinceModulation / 48.0);
-      updateHarmonyState(durationInput);
-
-      // End logic (simple: stop scheduling once past duration)
       if (isApproachingEnd && !isEndingNaturally) {
         beginNaturalEnd();
         return;
       }
 
+      let appliedDur = noteDur;
+      const pressure = Math.min(1.0, notesSinceModulation / 48.0);
+      updateHarmonyState(durationInput);
+
       phraseStep = (phraseStep + 1) % 16;
       if (phraseStep === 0) {
         phraseCount++;
-        arcPos = (arcPos + 1);
+        arcPos++;
         if (arcPos >= arcLen) startNewArc();
         currentCadenceType = pickCadenceTypeForPhrase();
       }
@@ -643,7 +635,7 @@
       const isCadence = (phraseStep >= 13);
       if (chance(phraseStep === 15 ? 0.85 : 0.2)) appliedDur *= 1.2;
 
-      // Melody movement (kept from v171)
+      // Melody movement
       if (isCadence) {
         const cadenceDegrees = [0, 1, 3, 4, 5];
         const currentOctave = Math.floor(patternIdxA / 7) * 7;
@@ -710,7 +702,7 @@
       let freq = getScaleNote(baseFreq, patternIdxA, circlePosition, isMinor, { raiseLeadingTone: raiseLT });
       freq = clampFreqMin(freq, MELODY_FLOOR_HZ);
 
-      // Drone logic (mirrors v171 intent)
+      // Drone logic
       const isArcStart = (arcPos === 0 && phraseStep === 0);
       const isClimax = (arcPos === arcClimaxAt && phraseStep === 0);
       const atPhraseStart = (phraseStep === 0);
@@ -773,7 +765,17 @@
   }
 
   // =========================
-  // START / STOP
+  // HARD STOP HANDLER (FIXED FOR DESKTOP)
+  // =========================
+  function handleVisibilityOrPageHide() {
+    // Only force stop on MOBILE devices. Desktop browsers can handle background tabs/spaces fine.
+    if (isMobileDevice() && document.hidden && isPlaying) {
+      stopAllManual(true, "Stopped (background)");
+    }
+  }
+
+  // =========================
+  // CONTROLS
   // =========================
   async function startFromUI() {
     ensureAudioContext();
@@ -844,7 +846,7 @@
     scheduler();
   }
 
-  function stopAllManual(instant = false) {
+  function stopAllManual(instant = false, statusMsg = "Stopped") {
     isPlaying = false;
     isEndingNaturally = false;
     isApproachingEnd = false;
@@ -864,7 +866,6 @@
     // Stop airplay bridge playback (prevents weird background behavior)
     if (bridgeAudioEl) {
       try { bridgeAudioEl.pause(); } catch {}
-      // keep srcObject attached (AirPlay works again on next play)
     }
 
     if (!audioContext) {
@@ -891,6 +892,7 @@
     }, 140);
 
     setButtonState("stopped");
+    announce(statusMsg);
   }
 
   function beginNaturalEnd() {
@@ -901,7 +903,7 @@
   }
 
   // =========================
-  // EXPORT WAV (full block)
+  // EXPORT WAV (Full Logic)
   // =========================
   async function renderWavExport() {
     if (!sessionSnapshot?.seed) { alert("Press Play once first."); return; }
@@ -1052,7 +1054,8 @@
 
       const normDensity = clamp01((exportDensity - 0.05) / 0.375);
       let targetSend = 0.65 - (0.25 * normDensity);
-      offlineSend.gain.setValueAtTime(Math.max(0, Math.min(0.95, targetSend)), localTime);
+      targetSend = Math.max(0, Math.min(0.95, targetSend));
+      offlineSend.gain.setValueAtTime(targetSend, localTime);
 
       let appliedDur = noteDur;
       if (chance(localPhraseStep === 15 ? 0.85 : 0.2)) appliedDur *= 1.2;
@@ -1186,7 +1189,7 @@
     const a = document.createElement("a");
     a.style.display = "none";
     a.href = url;
-    a.download = `open-final-b11-${Date.now()}.wav`;
+    a.download = `open-final-v54-${Date.now()}.wav`;
     document.body.appendChild(a);
     a.click();
     setTimeout(() => {
@@ -1204,8 +1207,8 @@
     const sampleRate = abuffer.sampleRate;
     let offset = 0, pos = 0;
 
-    const setUint16 = (data) => { view.setUint16(pos, data, true); pos += 2; };
-    const setUint32 = (data) => { view.setUint32(pos, data, true); pos += 4; };
+    function setUint16(data) { view.setUint16(pos, data, true); pos += 2; }
+    function setUint32(data) { view.setUint32(pos, data, true); pos += 4; }
 
     setUint32(0x46464952);
     setUint32(length - 8);
@@ -1236,19 +1239,6 @@
   }
 
   // =========================
-  // HARD STOP ON BACKGROUND (B1.1)
-  // =========================
-  function handleVisibilityOrPageHide() {
-    if (!isPlaying) return;
-
-    // The key behavior: STOP immediately before iOS throttles timers.
-    stopAllManual(true);
-
-    // Optional: update label to explain why it stopped.
-    announce("Stopped (background)");
-  }
-
-  // =========================
   // INIT
   // =========================
   document.addEventListener("DOMContentLoaded", () => {
@@ -1273,30 +1263,26 @@
 
     // Hotkeys (Shift required)
     document.addEventListener("keydown", (e) => {
+      if (isTypingTarget(e.target)) return;
       const k = (e.key || "").toLowerCase();
-      if (!e.shiftKey) return;
-      if (k === "r") { e.preventDefault(); toggleRecording(); }
-      if (k === "e") { e.preventDefault(); renderWavExport(); }
+      if (e.shiftKey && k === "r") { e.preventDefault(); toggleRecording(); }
+      if (e.shiftKey && k === "e") { e.preventDefault(); renderWavExport(); }
     });
 
     // Hard-stop events (catch background/lock)
-    document.addEventListener("visibilitychange", () => {
-      if (document.hidden) handleVisibilityOrPageHide();
-    });
-
-    // pagehide fires on iOS when switching apps / navigation
-    window.addEventListener("pagehide", handleVisibilityOrPageHide, { capture: true });
-
-    // For completeness
-    window.addEventListener("blur", () => {
-      // blur alone can be too aggressive on desktop; we keep it mild:
-      // only hard-stop if iOS-like environment AND playing.
-      // If you want blur to ALWAYS stop, uncomment the next line.
-      // handleVisibilityOrPageHide();
-    });
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pagehide", handleVisibilityChange, { capture: true });
 
     setButtonState("stopped");
     setRecordUI(false);
   });
+
+  // HARD STOP HANDLER (FIXED FOR DESKTOP)
+  function handleVisibilityChange() {
+    // Only force hard-stop on MOBILE. Desktop browsers can handle background audio fine.
+    if (isMobileDevice() && document.hidden && isPlaying) {
+      stopAllManual(true, "Stopped (background)");
+    }
+  }
 
 })();
