@@ -6,9 +6,9 @@
 
 Instead of recording bells, I went in the opposite direction: a “window” that’s blank on purpose: a browser window. No particular scene, no particular place, just a clean space for sound to travel through. This music is my way of experiencing what can come through that digital window, and what I can build inside it.
 
-The page makes low, synthetic bell tones. They are tuned to a clear musical grid, yet their internal harmonics are chaotic, creating a tension between the stability of the melody and the ambiguity of the bell itself. Each time it runs, it creates a different sequence of sounds. They are quiet and move slowly, drifting slightly over time so that nothing ever repeats exactly. Notes appear, fade out, and leave space.
+The page makes low, slow, synthetic bell tones. They are tuned to a clear musical grid, while their internal harmonics are chaotic, creating a tension between the stability of the melody and the ambiguity of the bell itself. Each time it runs, it creates a different sequence of sounds. They are quiet and move slowly, drifting slightly over time so that nothing ever repeats exactly. Notes appear, fade out, and leave space.
 
-The pacing is slow. The sounds do not ask for your attention. Rather, they sit alongside and hopefully enhance whatever else is happening: the light in your room, the noise outside, or the work you're doing.
+The sounds do not ask for your attention. Rather, they sit alongside and hopefully enhance whatever else is happening: the light in your room, the noise outside, or the work you're doing.
 
 *Open* is meant to run quietly in the background with minimal fuss: no logins and no accounts—only the last tone/duration may be remembered locally. You can change the tone or the duration. Each run is temporary, and when the sound stops, it’s gone.
 
