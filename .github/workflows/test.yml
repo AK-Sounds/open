@@ -14,7 +14,17 @@ concurrency:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            browsers: chromium firefox
+            projects: --project=chromium --project=firefox
+          - os: macos-latest
+            browsers: webkit
+            projects: --project=webkit
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -33,6 +43,13 @@ jobs:
         env:
           OPEN_BASELINE: ${{ runner.temp }}/open-baseline.js
       - name: Install browsers
-        run: npx playwright install --with-deps --only-shell chromium firefox webkit
+        run: npx playwright install --with-deps --only-shell ${{ matrix.browsers }}
+      - name: Provide a virtual audio output for Linux browsers
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get install -y pulseaudio
+          pulseaudio --start --exit-idle-time=-1
+          pactl load-module module-null-sink sink_name=browser_audio
+          pactl set-default-sink browser_audio
       - name: Run native browser checks
-        run: npm run test:browser
+        run: npm run test:browser -- ${{ matrix.projects }}

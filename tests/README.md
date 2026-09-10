@@ -33,7 +33,7 @@ npm run test:browser
 
 The development-only Playwright dependency exercises a local HTTP server in Chromium, Firefox, and WebKit. Browser checks verify both pop-up launcher paths, slider keyboard focus, sound in a decoded MediaRecorder download, immediate Stop/Play, and a complete 100-second stereo WAV export with playback interaction during worker encoding. Recording filenames are checked against each browser's actual MIME type. Worker acknowledgements are deliberately delayed in the export check to make that interaction reproducible.
 
-GitHub Actions runs the regression suite with the original baseline and all three browser projects on pushes to `main` and `engineering-hardening`, and on pull requests. Workflow permissions are read-only; it does not publish or deploy the site.
+GitHub Actions runs the regression suite with the original baseline and all three browser projects on pushes to `main` and `engineering-hardening`, and on pull requests. Chromium and Firefox run on Linux with a virtual audio output; WebKit runs on macOS so native recording codecs are available. Linux WebKit does not provide MediaRecorder in the tested build. Workflow permissions are read-only; it does not publish or deploy the site.
 
 ## Audio routing investigation
 

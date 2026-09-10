@@ -25,7 +25,7 @@ test.beforeEach(async ({ page }) => {
         return new Target(...args);
       }
     });
-    window.MediaRecorder = new Proxy(window.MediaRecorder, {
+    if (window.MediaRecorder) window.MediaRecorder = new Proxy(window.MediaRecorder, {
       construct(Target, args) {
         const recorder = new Target(...args);
         window.audioProbe.recorders.push(recorder);
@@ -66,7 +66,7 @@ test('native audio and recording survive immediate Stop → Play', async ({ page
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   await page.goto('/player.html');
   await page.locator('#playNow').click();
-  await expect(page.locator('#playNow')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#playNow'), await page.locator('#playerStatus').textContent()).toHaveAttribute('aria-pressed', 'true');
   await page.evaluate(() => {
     document.getElementById('stop').click();
     document.getElementById('playNow').click();
