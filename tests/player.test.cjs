@@ -8,7 +8,7 @@ const path = require('node:path');
 
 function harness(source = fs.readFileSync(path.join(__dirname, '../player.js'), 'utf8')) {
   let wall = 0, nextTimer = 0;
-  const timers = new Map(), contexts = [], recordings = [], downloads = [], blobs = [];
+  const timers = new Map(), contexts = [], recordings = [], downloads = [], blobs = [], workers = [];
   const elements = new Map();
   const param = () => ({ value: 0, setValueAtTime() {}, linearRampToValueAtTime() {},
     exponentialRampToValueAtTime() {}, setTargetAtTime() {}, cancelScheduledValues() {} });
@@ -56,6 +56,27 @@ function harness(source = fs.readFileSync(path.join(__dirname, '../player.js'), 
     stop() { this.state = 'inactive'; }
     finish(text) { this.ondataavailable({ data: new Blob([text], { type: this.mimeType }) }); this.onstop(); }
   }
+  class Worker {
+    constructor(url) {
+      assert.equal(url, 'wav-worker.js');
+      this.messages = []; this.terminated = false; workers.push(this);
+      const self = {
+        postMessage: data => queueMicrotask(() => {
+          if (!this.terminated) this.onmessage({ data });
+        }),
+        close() {}
+      };
+      vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../wav-worker.js'), 'utf8'),
+        { self, Blob, Float32Array, ArrayBuffer, DataView });
+      this.workerScope = self;
+    }
+    postMessage(data, transfer = []) {
+      this.messages.push({ type: data.type, offset: data.offset, frames: data.channels?.[0]?.length });
+      const copy = structuredClone(data, { transfer });
+      queueMicrotask(() => { if (!this.terminated) this.workerScope.onmessage({ data: copy }); });
+    }
+    terminate() { this.terminated = true; }
+  }
   function element(id) {
     if (!elements.has(id)) elements.set(id, { value: id === 'tone' ? '110' : 'infinite',
       classList: { toggle() {} }, style: {}, setAttribute() {}, addEventListener() {},
@@ -68,7 +89,7 @@ function harness(source = fs.readFileSync(path.join(__dirname, '../player.js'), 
   const sandbox = { console, Blob, Float32Array, Uint32Array, ArrayBuffer, DataView,
     navigator: { userAgent: 'desktop', maxTouchPoints: 0 },
     crypto: { getRandomValues(a) { a[0] = 12345; return a; } },
-    AudioContext: Context, OfflineAudioContext: OfflineContext, MediaRecorder: Recorder,
+    AudioContext: Context, OfflineAudioContext: OfflineContext, MediaRecorder: Recorder, Worker,
     localStorage: { getItem() { return null; }, setItem() {} },
     URL: { createObjectURL(blob) { blobs.push(blob); return 'blob:test'; }, revokeObjectURL() {} },
     document: { getElementById: element, createElement: () => element(Symbol()),
@@ -79,7 +100,7 @@ function harness(source = fs.readFileSync(path.join(__dirname, '../player.js'), 
   sandbox.window = sandbox;
   // Test-only access inside the IIFE, without exposing internals in production.
   const expose = `globalThis.api = { startFromUI, stopAllManual, toggleRecording,
-    renderWavExport, beginNaturalEnd, scheduleNote, scheduleDroneChord, handleVisibilityChange,
+    renderWavExport, bufferToWave, beginNaturalEnd, scheduleNote, scheduleDroneChord, handleVisibilityChange,
     state: () => ({ audioContext, bus, isPlaying, isEndingNaturally, isRecording,
       nodes: activeNodes.size, snapshot: sessionSnapshot }),
     setup: () => { ensureAudioContext(); buildMixBus(); },
@@ -100,7 +121,7 @@ function harness(source = fs.readFileSync(path.join(__dirname, '../player.js'), 
       }
     }
   }
-  return { api: sandbox.api, sandbox, advance, contexts, recordings, downloads, blobs, elements, Recorder };
+  return { api: sandbox.api, sandbox, advance, contexts, recordings, downloads, blobs, elements, Recorder, workers };
 }
 
 test('rapid Stop → Play cannot tear down the new session', async () => {
@@ -112,6 +133,31 @@ test('rapid Stop → Play cannot tear down the new session', async () => {
   assert.equal(h.api.state().bus, current);
   assert.equal(current.masterGain.disconnected, false);
   assert.equal(old.streamDest.stream.getTracks()[0].stopped, true);
+});
+
+test('a two-minute callback stall resumes one event ahead of the audio clock', async () => {
+  const h = harness(); await h.api.startFromUI();
+  const ctx = h.contexts[0]; const before = ctx.nodes.length;
+  ctx.currentTime += 120; const resumedAt = ctx.currentTime; h.advance(0.1);
+  const added = ctx.nodes.slice(before).filter(n => n.kind === 'oscillator');
+  assert.ok(added.length > 0 && added.length <= 12);
+  assert.ok(added.every(n => n.startTime >= resumedAt));
+  const starts = added.map(n => n.startTime); const count = added.length;
+  h.advance(1); assert.equal(ctx.nodes.slice(before).filter(n => n.kind === 'oscillator').length, count);
+  assert.ok(Math.max(...starts) - resumedAt < 0.2);
+});
+
+test('a clock pause does not skip upcoming musical events', async () => {
+  const a = harness(), b = harness(); await a.api.startFromUI(); await b.api.startFromUI();
+  a.advance(120, false); a.advance(30); b.advance(30);
+  assert.deepEqual(notes(a.contexts[0]), notes(b.contexts[0]));
+});
+
+test('a finite session still reaches its natural ending after a long callback stall', async () => {
+  const h = harness(); await h.api.startFromUI(); h.elements.get('songDuration').value = '60';
+  h.contexts[0].currentTime += 120; h.advance(600);
+  assert.equal(h.api.state().isPlaying, false); assert.equal(h.api.state().bus, null);
+  assert.equal(h.api.state().nodes, 0);
 });
 
 test('Stop cancels a Play waiting for audio resume', async () => {
@@ -231,4 +277,63 @@ test('export retains its independent original sequence and ending', async (t) =>
   assert.deepEqual(notes(a.contexts[1]), notes(b.contexts[1]));
   a.contexts[1].reject(Error('render')); b.contexts[1].reject(Error('render'));
   await pendingA; await caughtB;
+});
+
+function audioBuffer(channels, sampleRate = 44100) {
+  return { numberOfChannels: channels.length, length: channels[0].length, sampleRate,
+    copyFromChannel(target, channel, offset) { target.set(channels[channel].subarray(offset, offset + target.length)); }
+  };
+}
+
+test('worker export produces a valid WAV with original quantization and stereo ordering', async () => {
+  const h = harness();
+  const left = Float32Array.from([-1, -0.5, -0.25, 0, 0.25, 0.5, 1, 2]);
+  const right = Float32Array.from([1, 0.5, 0.25, 0, -0.25, -0.5, -1, -2]);
+  const blob = await h.api.bufferToWave(audioBuffer([left, right]));
+  const wav = Buffer.from(await blob.arrayBuffer());
+  assert.equal(blob.type, 'audio/wav'); assert.equal(wav.length, 44 + 8 * 4);
+  assert.equal(wav.toString('ascii', 0, 4), 'RIFF'); assert.equal(wav.readUInt32LE(4), wav.length - 8);
+  assert.equal(wav.toString('ascii', 8, 12), 'WAVE'); assert.equal(wav.readUInt16LE(20), 1);
+  assert.equal(wav.readUInt16LE(22), 2); assert.equal(wav.readUInt32LE(24), 44100);
+  assert.equal(wav.readUInt16LE(34), 16); assert.equal(wav.readUInt32LE(40), 32);
+  const actual = Array.from({ length: 16 }, (_, i) => wav.readInt16LE(44 + i * 2));
+  assert.deepEqual(actual, [-32768, 32767, -16383, 16383, -8191, 8191, 0, 0, 8191, -8191, 16383, -16383, 32767, -32768, 32767, -32768]);
+  assert.equal(left.byteLength, 32); assert.equal(right.byteLength, 32);
+  assert.equal(h.workers[0].terminated, true);
+});
+
+test('encoding transfers bounded chunks including the final partial chunk', async () => {
+  const h = harness(); const frames = 65536 * 2 + 17;
+  const channel = new Float32Array(frames); channel[frames - 1] = 1;
+  const blob = await h.api.bufferToWave(audioBuffer([channel]));
+  const chunks = h.workers[0].messages.filter(m => m.type === 'samples');
+  assert.deepEqual(chunks.map(c => [c.offset, c.frames]), [[0, 65536], [65536, 65536], [131072, 17]]);
+  assert.equal(blob.size, frames * 2 + 44);
+  assert.equal(new DataView(await blob.slice(-2).arrayBuffer()).getInt16(0, true), 32767);
+  assert.equal(channel.byteLength, frames * 4);
+});
+
+test('encoder failure terminates the worker and allows export to be retried', async () => {
+  const h = harness(); await h.api.startFromUI(); h.elements.get('songDuration').value = '60';
+  const pending = h.api.renderWavExport();
+  h.contexts[1].resolve(audioBuffer([new Float32Array(0)])); await pending;
+  assert.equal(h.workers[0].terminated, true);
+  const retry = h.api.renderWavExport();
+  h.contexts[2].resolve(audioBuffer([Float32Array.from([0, 0.5, 0])])); await retry;
+  assert.equal(h.downloads.length, 1); assert.match(h.downloads[0], /\.wav$/);
+});
+
+test('worker startup, runtime, and message failures reject encoding', async () => {
+  const h = harness(); const buffer = audioBuffer([new Float32Array(4)]);
+  h.sandbox.Worker = class { constructor() { throw Error('blocked worker'); } };
+  await assert.rejects(h.api.bufferToWave(buffer), /blocked worker/);
+  for (const kind of ['error', 'messageerror']) {
+    let terminated = false;
+    h.sandbox.Worker = class {
+      postMessage() { queueMicrotask(() => this['on' + kind]({ preventDefault() {} })); }
+      terminate() { terminated = true; }
+    };
+    await assert.rejects(h.api.bufferToWave(buffer), /WAV encoder/);
+    assert.equal(terminated, true);
+  }
 });

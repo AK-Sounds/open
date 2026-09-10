@@ -642,6 +642,10 @@
     const now = audioContext.currentTime;
     const boundary = now + LOOKAHEAD;
 
+    // After a stalled callback, continue the current phrase from now. Never
+    // create a backlog of oscillators whose start times have already passed.
+    if (nextTimeA < now) nextTimeA = now + 0.05;
+
     const elapsed = now - sessionStartTime;
     if (durationInput !== "infinite" && elapsed >= parseFloat(durationInput)) isApproachingEnd = true;
 
@@ -1254,7 +1258,7 @@
     }
 
     const renderedBuffer = await offlineCtx.startRendering();
-    const wavBlob = bufferToWave(renderedBuffer, exportDuration * sampleRate);
+    const wavBlob = await bufferToWave(renderedBuffer);
     const url = URL.createObjectURL(wavBlob);
     const a = document.createElement("a");
     a.style.display = "none";
@@ -1266,36 +1270,47 @@
     announce("WAV downloaded");
   }
 
-  function bufferToWave(abuffer, len) {
-    const numOfChan = abuffer.numberOfChannels;
-    const length = len * numOfChan * 2 + 44;
-    const buffer = new ArrayBuffer(length);
-    const view = new DataView(buffer);
-    const channels = [];
-    const sampleRate = abuffer.sampleRate;
-    let offset = 0, pos = 0;
-
-    function setUint16(data) { view.setUint16(pos, data, true); pos += 2; }
-    function setUint32(data) { view.setUint32(pos, data, true); pos += 4; }
-
-    setUint32(0x46464952); setUint32(length - 8); setUint32(0x45564157);
-    setUint32(0x20746d66); setUint32(16); setUint16(1); setUint16(numOfChan);
-    setUint32(sampleRate); setUint32(sampleRate * 2 * numOfChan);
-    setUint16(numOfChan * 2); setUint16(16); setUint32(0x61746164);
-    setUint32(length - pos - 4);
-
-    for (let i = 0; i < numOfChan; i++) channels.push(abuffer.getChannelData(i));
-
-    while (pos < length) {
-      for (let i = 0; i < numOfChan; i++) {
-        let sample = Math.max(-1, Math.min(1, channels[i][offset]));
-        sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767) | 0;
-        view.setInt16(pos, sample, true);
-        pos += 2;
+  function bufferToWave(abuffer) {
+    return new Promise((resolve, reject) => {
+      const worker = new Worker("wav-worker.js");
+      let offset = 0;
+      let finished = false;
+      function finish(error, blob) {
+        if (finished) return;
+        finished = true;
+        worker.terminate();
+        if (error) reject(error);
+        else resolve(blob);
       }
-      offset++;
-    }
-    return new Blob([buffer], { type: "audio/wav" });
+      worker.onerror = (event) => {
+        event.preventDefault();
+        finish(new Error("WAV encoder failed"));
+      };
+      worker.onmessageerror = () => finish(new Error("WAV encoder message failed"));
+      worker.onmessage = ({ data }) => {
+        if (finished) return;
+        if (data.type === "error") { finish(new Error(data.message)); return; }
+        if (data.type === "done") { finish(null, data.blob); return; }
+        if (data.type !== "ready") { finish(new Error("Invalid WAV encoder response")); return; }
+        try {
+          // Copy and transfer one small chunk at a time. AudioBuffer-owned
+          // storage stays intact; the UI never scans the entire recording.
+          const count = Math.min(65536, abuffer.length - offset);
+          if (count <= 0) throw new Error("Unexpected WAV encoder request");
+          const channels = Array.from({ length: abuffer.numberOfChannels }, (_, ch) => {
+            const samples = new Float32Array(count);
+            abuffer.copyFromChannel(samples, ch, offset);
+            return samples;
+          });
+          worker.postMessage({ type: "samples", offset, channels }, channels.map(ch => ch.buffer));
+          offset += count;
+        } catch (error) { finish(error); }
+      };
+      try {
+        worker.postMessage({ type: "start", length: abuffer.length,
+          sampleRate: abuffer.sampleRate, channels: abuffer.numberOfChannels });
+      } catch (error) { finish(error); }
+    });
   }
 
   // =========================
