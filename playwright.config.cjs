@@ -6,7 +6,11 @@ module.exports = defineConfig({
   workers: 1,
   retries: 0,
   reporter: 'list',
-  use: { browserName: 'chromium', baseURL: 'http://127.0.0.1:4173' },
+  use: { baseURL: 'http://127.0.0.1:4173' },
+  projects: ['chromium', 'firefox', 'webkit'].map(browserName => ({
+    name: browserName,
+    use: { browserName }
+  })),
   webServer: {
     command: 'node tests/serve.cjs',
     url: 'http://127.0.0.1:4173/player.html',

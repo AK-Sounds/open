@@ -32,7 +32,7 @@ jobs:
         run: npm test
         env:
           OPEN_BASELINE: ${{ runner.temp }}/open-baseline.js
-      - name: Install browser
-        run: npx playwright install --with-deps chromium --only-shell
+      - name: Install browsers
+        run: npx playwright install --with-deps --only-shell chromium firefox webkit
       - name: Run native browser checks
         run: npm run test:browser

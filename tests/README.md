@@ -27,12 +27,18 @@ WAV encoding runs in a dedicated worker. At most 65,536 frames per channel are c
 
 ```sh
 npm ci
-npx playwright install --with-deps chromium --only-shell
+npx playwright install --with-deps --only-shell chromium firefox webkit
 npm run test:browser
 ```
 
-The development-only Playwright dependency exercises a local HTTP server and native Chromium APIs. Browser checks verify slider keyboard focus, sound in a decoded MediaRecorder download, immediate Stop/Play, and a complete 100-second stereo WAV export with playback interaction during worker encoding. Worker acknowledgements are deliberately delayed in the export check to make that interaction reproducible.
+The development-only Playwright dependency exercises a local HTTP server in Chromium, Firefox, and WebKit. Browser checks verify both pop-up launcher paths, slider keyboard focus, sound in a decoded MediaRecorder download, immediate Stop/Play, and a complete 100-second stereo WAV export with playback interaction during worker encoding. Recording filenames are checked against each browser's actual MIME type. Worker acknowledgements are deliberately delayed in the export check to make that interaction reproducible.
 
-GitHub Actions runs the regression suite with the original baseline and the Chromium checks on pushes to `main` and `engineering-hardening`, and on pull requests. Workflow permissions are read-only; it does not publish or deploy the site.
+GitHub Actions runs the regression suite with the original baseline and all three browser projects on pushes to `main` and `engineering-hardening`, and on pull requests. Workflow permissions are read-only; it does not publish or deploy the site.
 
-These checks do not audition the music or validate actual browser memory peaks, AirPlay, or iOS hardware behavior. Device checks should cover audible reverb decay and mobile background/restore behavior before release.
+## Audio routing investigation
+
+The master gain connects to both `AudioContext.destination` and a `MediaStreamAudioDestinationNode`. That stream feeds the unmuted media bridge as well as live recording. The routing check verifies the shared source, native media playback state, nonzero signal in the stream, and bridge teardown. Its analyser is connected only in the test and does not add another audible output.
+
+This establishes two active output paths at the browser level. It does not measure their physical sum, relative device latency, or AirPlay behavior. The existing routing is retained pending device measurements; muting or removing a path could change perceived level, timbre, and mobile playback behavior. A physical comparison should capture direct-only, bridge-only, and combined output with the same stable test signal and unchanged device volume, then compare level and timing. Those modes are diagnostic experiments, not player controls.
+
+These checks do not audition the music or validate actual browser memory peaks, AirPlay, or iOS hardware behavior. Playwright WebKit is not the Safari application or an iPhone. Device checks should cover audible reverb decay and mobile background/restore behavior before release.

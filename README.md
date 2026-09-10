@@ -19,7 +19,7 @@ When set to "Infinite", the engine generates new harmonic movement according to 
 
 * **Circle of Fifths:** Harmonic centers shift gradually between related keys.
 * **Contour Constraints:** A bounded random walk keeps the melody between A2 and G#4. Notes that exceed the range are octave-shifted downward.
-* **Tension Mapping:** Harmonic distance affects timbre. As the harmony destabilizes, FM ratios and interval structures become brighter and more complex before resolving again.
+* **Tension Mapping:** Cadence choices and resets at the start of an arc update a tension value. Phrase position and tension influence the next cadence; tension also shapes FM brightness, the use of fractured ratios, and whether a drone includes a third.
 
 ### Technical Architecture
 *Open* is built purely on the standard Web Audio API without external libraries, utilizing a custom procedural engine to synthesize the environment live.
@@ -30,7 +30,7 @@ When set to "Infinite", the engine generates new harmonic movement according to 
 * **Physics:** The engine models physical decay by reducing the Modulation Index (brightness) faster than the Amplitude (volume). The sound starts complex and fades into a pure sine wave.
 * **Delayed Entry:** The scheduler begins slightly before the first audible event, avoiding an abrupt “start button” feeling.
 * **Acoustics:**
-    * **Impulse Response:** A custom convolution reverb with a 10-second tail and 2.8s decay.
+    * **Impulse Response:** A custom convolution reverb with a 10-second impulse response. Its noise envelope uses a decay-curve exponent of 2.8.
     * **Pre-Delay (45ms):** A gap between the dry sound and the reverb to simulate distance.
     * **Filter (4200Hz):** The reverb return is low-passed to remove digital harshness while keeping the upper harmonics.
 
@@ -42,8 +42,8 @@ Each recording captures a single, unrepeatable run.
 
 ### Output & Saving
 Because there are no project files, you save the *audio*, not the *session*.
-* **Live Recording:** Press **`Shift + R`** to capture the audio stream exactly as you hear it. Saves as a `.webm` or `.ogg` file.
-* **Export WAV:** Press **`Shift + E`** to render the current seed into a high-quality, lossless `.wav` file. (This runs offline via the `OfflineAudioContext` and calculates the audio math faster than real-time.) "Infinite" sessions render up to a 30-minute cap. The tone used is whichever value was set when you pressed Play, not the current slider position.
+* **Live Recording:** Press **`Shift + R`** to capture the current mix in real time; press it again to save. The browser selects the recording format, saved as `.webm`, `.ogg`, or `.m4a`. Recording also finishes automatically after a natural ending and its remaining audio tail.
+* **Export WAV:** Press **`Shift + E`** to create an independent generative rendering as a lossless, 16-bit PCM `.wav` file. Export uses its own random state initialized from the session seed and retains its own sequence and ending behavior. It does not reproduce the live performance or alter its random state. Synthesis runs through `OfflineAudioContext`, with WAV encoding handled in a worker. The selected duration controls export length; "Infinite" uses a 30-minute core-duration cap, followed by 40 seconds for decay. The root tone is the value captured when Play was pressed.
 
 ---
 

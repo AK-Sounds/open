@@ -4,7 +4,12 @@ const path = require('node:path');
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
-    window.audioProbe = { contexts: [], workers: 0 };
+    window.audioProbe = { contexts: [], workers: 0, recorders: [], edges: [] };
+    const connect = AudioNode.prototype.connect;
+    AudioNode.prototype.connect = function(destination, ...args) {
+      window.audioProbe.edges.push({ source: this, destination });
+      return connect.call(this, destination, ...args);
+    };
     const OriginalContext = window.AudioContext;
     window.AudioContext = new Proxy(OriginalContext, {
       construct(Target, args) {
@@ -20,7 +25,32 @@ test.beforeEach(async ({ page }) => {
         return new Target(...args);
       }
     });
+    window.MediaRecorder = new Proxy(window.MediaRecorder, {
+      construct(Target, args) {
+        const recorder = new Target(...args);
+        window.audioProbe.recorders.push(recorder);
+        return recorder;
+      }
+    });
   });
+});
+
+test('a blocked pop-up opens the player in the current tab', async ({ page }) => {
+  await page.addInitScript(() => { window.open = () => null; });
+  await page.goto('/index.html');
+  await page.locator('#launchPlayer').click();
+  await expect(page).toHaveURL(/\/player\.html$/);
+  await expect(page.locator('#playNow')).toBeVisible();
+});
+
+test('an allowed pop-up preserves the separate player window', async ({ page }) => {
+  await page.goto('/index.html');
+  const opened = page.waitForEvent('popup');
+  await page.locator('#launchPlayer').click();
+  const player = await opened;
+  await expect(player.locator('#playNow')).toBeVisible();
+  await expect(page).toHaveURL(/\/index\.html$/);
+  await player.close();
 });
 
 test('the tone slider has visible keyboard focus', async ({ page }) => {
@@ -44,11 +74,15 @@ test('native audio and recording survive immediate Stop → Play', async ({ page
   await page.waitForFunction(() => audioProbe.contexts[0].currentTime > 0.3);
   expect(await page.evaluate(() => document.getElementById('open-airplay-bridge').srcObject.active)).toBe(true);
   await page.keyboard.press('Shift+R');
-  await page.waitForFunction(() => audioProbe.contexts[0].currentTime > 1);
+  await expect(page.locator('#playerStatus')).toHaveText('Recording started');
+  const recordingStartedAt = await page.evaluate(() => audioProbe.contexts[0].currentTime);
+  await page.waitForFunction(start => audioProbe.contexts[0].currentTime > start + 1, recordingStartedAt);
   const downloading = page.waitForEvent('download');
   await page.keyboard.press('Shift+R');
   const download = await downloading;
-  expect(download.suggestedFilename()).toMatch(/\.webm$/);
+  const mime = await page.evaluate(() => audioProbe.recorders[0].mimeType);
+  const extension = mime.includes('ogg') ? 'ogg' : mime.includes('mp4') ? 'm4a' : 'webm';
+  expect(download.suggestedFilename().endsWith('.' + extension)).toBe(true);
   const recorded = await fs.readFile(await download.path());
   expect(recorded.length).toBeGreaterThan(1000);
   // Decode the actual recording to verify there is sound, not just valid metadata.
@@ -97,4 +131,40 @@ test('real WAV rendering and worker encoding allow playback interaction', async 
   expect(wav.subarray(44).some(value => value !== 0)).toBe(true);
   expect(await page.evaluate(() => document.getElementById('open-airplay-bridge').srcObject.active)).toBe(true);
   expect(errors).toEqual([]);
+});
+
+test('the direct output and media bridge are active and share the live mix', async ({ page }) => {
+  await page.goto('/player.html');
+  await page.locator('#playNow').click();
+  await page.waitForFunction(() => {
+    const bridge = document.getElementById('open-airplay-bridge');
+    return bridge && !bridge.paused && bridge.readyState >= 2;
+  });
+  const routing = await page.evaluate(() => {
+    const ctx = audioProbe.contexts[0];
+    const bridge = document.getElementById('open-airplay-bridge');
+    const direct = audioProbe.edges.find(edge => edge.destination === ctx.destination);
+    const stream = audioProbe.edges.find(edge => edge.destination.stream === bridge.srcObject);
+    const source = ctx.createMediaStreamSource(bridge.srcObject);
+    const analyser = ctx.createAnalyser();
+    source.connect(analyser);
+    audioProbe.bridgeProbe = { source, analyser };
+    return {
+      sharedMix: !!direct && !!stream && direct.source === stream.source,
+      muted: bridge.muted, volume: bridge.volume, tracks: bridge.srcObject.getAudioTracks().length
+    };
+  });
+  expect(routing).toEqual({ sharedMix: true, muted: false, volume: 1, tracks: 1 });
+  await expect.poll(() => page.evaluate(() => {
+    const analyser = audioProbe.bridgeProbe.analyser;
+    const samples = new Float32Array(analyser.fftSize);
+    analyser.getFloatTimeDomainData(samples);
+    return samples.some(sample => Math.abs(sample) > 0.0001);
+  })).toBe(true);
+  await page.evaluate(() => {
+    audioProbe.bridgeProbe.source.disconnect();
+    audioProbe.bridgeProbe.analyser.disconnect();
+  });
+  await page.locator('#stop').click();
+  await page.waitForFunction(() => document.getElementById('open-airplay-bridge').srcObject === null);
 });
