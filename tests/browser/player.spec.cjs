@@ -110,6 +110,7 @@ test('real WAV rendering and worker encoding allow playback interaction', async 
   }));
   await page.goto('/player.html');
   await page.locator('#playNow').click();
+  await expect(page.locator('#playNow')).toHaveAttribute('aria-pressed', 'true');
   const downloading = page.waitForEvent('download');
   await page.keyboard.press('Shift+E');
   await page.waitForFunction(() => audioProbe.workers === 1);
