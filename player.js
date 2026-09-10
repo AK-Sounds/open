@@ -2,8 +2,8 @@
 /* ============================================================
    OPEN — v78 (The Reverb Tail Update)
    - Base: The exact v62 script (Surgical iOS Patch).
-   - Lifecycle: 100% reverted to v62 teardown, track-killing, 
-     and background bridging logic to prevent 20-minute silent hardware locks.
+   - Lifecycle: bounded voice tracking, tail-aware completion, and cancellable
+     teardown; retains the existing mobile background stop policy.
    - Music Updates Applied: 110Hz Floor/415.30Hz Ceiling, 
      0.20 runDensity cap, and Anti-Doubling FM math.
    - Export Updates: Added a 40-second reverb tail to OfflineAudioContext
@@ -140,6 +140,35 @@
   let audioContext = null;
   let bus = null;
   let bridgeAudioEl = null;
+  let teardownTimer = null;
+  let cleanupInterval = null;
+  let startRequest = 0;
+  const activeVoices = new Set();
+  // Allow the per-voice lowpass to settle before disconnecting its output.
+  const VOICE_SETTLE_SECONDS = 0.1;
+
+  function registerVoice(ctx, nodes, endTime) {
+    if (ctx !== audioContext || !bus) return;
+    activeVoices.add({ nodes, releaseAt: endTime + VOICE_SETTLE_SECONDS });
+    bus.lastVoiceEnd = Math.max(bus.lastVoiceEnd, endTime + VOICE_SETTLE_SECONDS);
+  }
+
+  function cleanupFinishedVoices() {
+    if (!audioContext || !bus) return;
+    const now = audioContext.currentTime;
+    for (const voice of activeVoices) {
+      if (now < voice.releaseAt) continue;
+      for (const node of voice.nodes) {
+        try { node.disconnect(); } catch {}
+        activeNodes.delete(node);
+      }
+      activeVoices.delete(voice);
+    }
+    // Use the audio clock: a suspended context must not lose its pending tail.
+    if (isEndingNaturally && now >= bus.lastVoiceEnd + bus.tailSeconds) {
+      stopAllManual(true);
+    }
+  }
 
   // Active node tracking
   const activeNodes = new Set();
@@ -155,12 +184,13 @@
       try { n.disconnect?.(); } catch {}
       activeNodes.delete(n);
     }
+    activeVoices.clear();
   }
 
   let cachedImpulseBuffer = null;
 
   function ensureAudioContext() {
-    if (audioContext) return;
+    if (audioContext && audioContext.state !== "closed") return;
     const Ctx = window.AudioContext || window.webkitAudioContext;
     audioContext = new Ctx();
   }
@@ -180,7 +210,7 @@
     document.body.appendChild(bridgeAudioEl);
   }
 
-  function createImpulseResponse(ctx) {
+  function createImpulseResponse(ctx, seed = sessionSeed, cache = true) {
     if (cachedImpulseBuffer && cachedImpulseBuffer.sampleRate === ctx.sampleRate) return cachedImpulseBuffer;
     
     const duration = 10.0; // same tail length on mobile and desktop, per artist preference
@@ -188,18 +218,22 @@
     const decay = 2.8, rate = ctx.sampleRate;
     const length = Math.floor(rate * duration);
     const impulse = ctx.createBuffer(2, length, rate);
-    const r = mulberry32((sessionSeed ^ 0xC0FFEE) >>> 0);
+    const r = mulberry32((seed ^ 0xC0FFEE) >>> 0);
     for (let ch = 0; ch < 2; ch++) {
       const data = impulse.getChannelData(ch);
       for (let i = 0; i < length; i++) {
         data[i] = (r() * 2 - 1) * Math.pow(1 - i / length, decay);
       }
     }
-    cachedImpulseBuffer = impulse;
+    if (cache) cachedImpulseBuffer = impulse;
     return impulse;
   }
 
   function teardownBusHard() {
+    clearTimeout(teardownTimer);
+    teardownTimer = null;
+    clearInterval(cleanupInterval);
+    cleanupInterval = null;
     if (!audioContext || !bus) return;
     try { bus.masterGain.gain.cancelScheduledValues(audioContext.currentTime); } catch {}
     try { bus.masterGain.gain.setValueAtTime(0, audioContext.currentTime); } catch {}
@@ -208,8 +242,12 @@
 
     try { bus.reverbReturn.disconnect(); } catch {}
     try { bus.reverbSend.disconnect(); } catch {}
+    try { bus.reverbPreDelay.disconnect(); } catch {}
+    try { bus.reverbNode.disconnect(); } catch {}
+    try { bus.reverbLP.disconnect(); } catch {}
     try { bus.masterGain.disconnect(); } catch {}
     try { bus.streamDest.disconnect(); } catch {}
+    bus.streamDest.stream.getTracks().forEach(track => track.stop());
     
     // V62: Crucial for stopping iOS Phantom CPU / Hardware Locks
     if (bridgeAudioEl?.srcObject) {
@@ -255,7 +293,13 @@
     reverbLP.connect(reverbReturn);
     reverbReturn.connect(masterGain);
 
-    bus = { masterGain, reverbSend, reverbReturn, streamDest };
+    bus = {
+      masterGain, reverbSend, reverbReturn, streamDest,
+      reverbPreDelay, reverbNode, reverbLP,
+      lastVoiceEnd: audioContext.currentTime,
+      tailSeconds: reverbNode.buffer.duration + reverbPreDelay.delayTime.value + 0.25
+    };
+    cleanupInterval = setInterval(cleanupFinishedVoices, 250);
 
     ensureBridge();
     bridgeAudioEl.srcObject = streamDest.stream;
@@ -265,8 +309,16 @@
   // LIVE RECORDING
   // =========================
   let mediaRecorder = null;
-  let recordedChunks = [];
   let isRecording = false;
+
+  function stopRecording() {
+    const recorder = mediaRecorder;
+    mediaRecorder = null;
+    isRecording = false;
+    if (recorder && recorder.state !== "inactive") {
+      try { recorder.stop(); } catch { announce("Recording could not be saved"); }
+    }
+  }
 
   function setRecordUI(on) {
     // Recording is an intentionally undocumented, keyboard-only feature (Shift+R).
@@ -279,35 +331,53 @@
     if (!bus?.streamDest?.stream) return;
 
     if (isRecording) {
-      isRecording = false;
-      try { mediaRecorder?.stop(); } catch {}
-      setRecordUI(false);
+      stopRecording();
       return;
     }
 
-    recordedChunks = [];
+    // Each recording owns its asynchronous callbacks, chunks, and MIME type.
+    const recordedChunks = [];
+    let recorder;
     try {
       const types = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg"];
       const mimeType = types.find(t => window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || "";
-      mediaRecorder = new MediaRecorder(bus.streamDest.stream, mimeType ? { mimeType } : undefined);
+      recorder = new MediaRecorder(bus.streamDest.stream, mimeType ? { mimeType } : undefined);
     } catch (e) {
       announce("Recording unavailable in this browser");
       return;
     }
 
-    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
-    mediaRecorder.onstop = () => {
-      const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || "audio/webm" });
+    recorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
+    recorder.onerror = () => {
+      if (mediaRecorder === recorder) {
+        stopRecording();
+        announce("Recording failed");
+      }
+    };
+    recorder.onstop = () => {
+      if (mediaRecorder === recorder) {
+        mediaRecorder = null;
+        isRecording = false;
+      }
+      if (!recordedChunks.length) return;
+      const blob = new Blob(recordedChunks, { type: recorder.mimeType || recordedChunks[0].type || "audio/webm" });
+      recordedChunks.length = 0;
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `open-live-${Date.now()}.${blob.type.includes("ogg") ? "ogg" : "webm"}`;
+      const extension = blob.type.includes("ogg") ? "ogg" : blob.type.includes("mp4") ? "m4a" : "webm";
+      a.download = `open-live-${Date.now()}.${extension}`;
       document.body.appendChild(a);
       a.click();
+      if (!isRecording) setRecordUI(false);
       setTimeout(() => { try { document.body.removeChild(a); } catch {} URL.revokeObjectURL(url); }, 100);
     };
 
-    try { mediaRecorder.start(250); } catch {}
+    try { recorder.start(250); } catch {
+      announce("Recording could not start");
+      return;
+    }
+    mediaRecorder = recorder;
     isRecording = true;
     setRecordUI(true);
   }
@@ -502,10 +572,11 @@
 
       modulator.start(time); carrier.start(time);
       modulator.stop(time + duration); carrier.stop(time + duration);
+      registerVoice(ctx, [carrier, modulator, modGain, ampGain, filter], time + duration);
     });
   }
 
-  function scheduleBassVoice(ctx, destination, wetSend, freq, time, duration, volume) {
+  function scheduleBassVoice(ctx, destination, wetSend, freq, time, duration, volume, random = rand) {
     const carrier = trackNode(ctx, ctx.createOscillator());
     const modulator = trackNode(ctx, ctx.createOscillator());
     const modGain = trackNode(ctx, ctx.createGain());
@@ -516,7 +587,7 @@
     modulator.type = "sine";
     carrier.frequency.value = freq;
     modulator.frequency.value = freq * 2.0; 
-    modulator.detune.value = (rand() - 0.5) * 8; 
+    modulator.detune.value = (random() - 0.5) * 8;
 
     modGain.gain.setValueAtTime(0, time);
     modGain.gain.linearRampToValueAtTime(freq * 1.8, time + (duration * 0.5)); 
@@ -536,18 +607,19 @@
 
     modulator.start(time); carrier.start(time);
     modulator.stop(time + duration); carrier.stop(time + duration);
+    registerVoice(ctx, [carrier, modulator, modGain, ampGain, lp], time + duration);
   }
 
-  function scheduleDroneChord(ctx, destination, wetSend, rootFreq, time, duration, baseVolume, quality, includeThird = true) {
+  function scheduleDroneChord(ctx, destination, wetSend, rootFreq, time, duration, baseVolume, quality, includeThird = true, random = rand) {
      let f0 = clampFreqMin(rootFreq, DRONE_FLOOR_HZ);
      const thirdRatio = (quality === "min") ? Math.pow(2, 3/12) : Math.pow(2, 4/12);
      const fifthRatio = Math.pow(2, 7/12); 
      const vol = baseVolume * DRONE_GAIN_MULT;
 
-     scheduleBassVoice(ctx, destination, wetSend, f0, time, duration, vol * 0.50);
-     scheduleBassVoice(ctx, destination, wetSend, f0 * fifthRatio, time, duration, vol * 0.30);
+     scheduleBassVoice(ctx, destination, wetSend, f0, time, duration, vol * 0.50, random);
+     scheduleBassVoice(ctx, destination, wetSend, f0 * fifthRatio, time, duration, vol * 0.30, random);
      if (includeThird) {
-       scheduleBassVoice(ctx, destination, wetSend, f0 * thirdRatio, time, duration, vol * 0.20);
+       scheduleBassVoice(ctx, destination, wetSend, f0 * thirdRatio, time, duration, vol * 0.20, random);
      }
   }
 
@@ -757,7 +829,7 @@
 
     if (!isBackgrounding) return;
 
-    if (isPlaying || isEndingNaturally || bus) {
+    if (isPlaying || isEndingNaturally || bus || audioContext) {
       closeCtxAfterStop = true;
       stopAllManual(true, "Stopped (background)");
       closeCtxAfterStop = false;
@@ -768,59 +840,70 @@
   // CONTROLS
   // =========================
   async function startFromUI() {
-    ensureAudioContext();
-    if (audioContext.state === "suspended") await audioContext.resume();
-    
-    stopAllManual(true);
-    buildMixBus();
-    
-    if (bridgeAudioEl) bridgeAudioEl.play().catch(()=>{});
+    let request = ++startRequest;
+    try {
+      ensureAudioContext();
+      const ctx = audioContext;
+      if (ctx.state === "suspended") await ctx.resume();
+      if (request !== startRequest || audioContext !== ctx) return;
+      if (ctx.state !== "running") throw new Error("Audio context is not running");
 
-    isEndingNaturally = false;
-    isApproachingEnd = false;
-    patternIdxA = 0; circlePosition = 0; isMinor = false; tension = 0.0;
-    notesSinceModulation = 0; arcPos = -1; arcLen = 6; arcClimaxAt = 4;
+      stopAllManual(true);
+      request = startRequest;
+      buildMixBus();
 
-    const seed = (crypto?.getRandomValues ? crypto.getRandomValues(new Uint32Array(1))[0] : Date.now()) >>> 0;
-    setSeed(seed);
-    runDensity = 0.05 + rand() * 0.20;
+      if (bridgeAudioEl) bridgeAudioEl.play().catch(()=>{});
 
-    // Capture the tone actually used for this run, so exporting later reproduces
-    // what played even if the (now re-enabled) slider has since moved.
-    let baseFreqAtStart = Number($("tone")?.value ?? 110);
-    if (!Number.isFinite(baseFreqAtStart)) baseFreqAtStart = 110;
-    baseFreqAtStart = Math.max(110, Math.min(200, baseFreqAtStart));
+      isEndingNaturally = false;
+      isApproachingEnd = false;
+      patternIdxA = 0; circlePosition = 0; isMinor = false; tension = 0.0;
+      notesSinceModulation = 0; arcPos = -1; arcLen = 6; arcClimaxAt = 4;
+      lastDroneStart = -9999; lastDroneDur = 0;
 
-    startNewArc();
-    sessionSnapshot = { seed, density: runDensity, arcLen, arcClimaxAt, tone: baseFreqAtStart };
+      const seed = (crypto?.getRandomValues ? crypto.getRandomValues(new Uint32Array(1))[0] : Date.now()) >>> 0;
+      setSeed(seed);
+      runDensity = 0.05 + rand() * 0.20;
 
-    phraseCount = -1;
-    silentInitPhraseLive();
+      // Capture the tone actually used for this run, so exporting later reproduces
+      // what played even if the (now re-enabled) slider has since moved.
+      let baseFreqAtStart = Number($("tone")?.value ?? 110);
+      if (!Number.isFinite(baseFreqAtStart)) baseFreqAtStart = 110;
+      baseFreqAtStart = Math.max(110, Math.min(200, baseFreqAtStart));
 
-    isPlaying = true;
-    sessionStartTime = audioContext.currentTime;
-    nextTimeA = audioContext.currentTime + 0.05;
+      startNewArc();
+      sessionSnapshot = { seed, density: runDensity, arcLen, arcClimaxAt, tone: baseFreqAtStart };
 
-    bus.masterGain.gain.setValueAtTime(0, audioContext.currentTime);
-    bus.masterGain.gain.linearRampToValueAtTime(MASTER_VOL, audioContext.currentTime + 0.1);
+      phraseCount = -1;
+      silentInitPhraseLive();
 
-    setButtonState("playing");
+      isPlaying = true;
+      sessionStartTime = audioContext.currentTime;
+      nextTimeA = audioContext.currentTime + 0.05;
 
-    if (timerInterval) clearInterval(timerInterval);
-    timerInterval = setInterval(scheduler, SCHEDULER_INTERVAL_MS);
-    scheduler();
+      bus.masterGain.gain.setValueAtTime(0, audioContext.currentTime);
+      bus.masterGain.gain.linearRampToValueAtTime(MASTER_VOL, audioContext.currentTime + 0.1);
+
+      setButtonState("playing");
+
+      if (timerInterval) clearInterval(timerInterval);
+      timerInterval = setInterval(scheduler, SCHEDULER_INTERVAL_MS);
+      scheduler();
+    } catch (error) {
+      if (request === startRequest) {
+        stopAllManual(true, "Playback could not start. Press Play to retry.");
+      }
+    }
   }
 
   function stopAllManual(instant = false, statusMsg = "Stopped") {
+    startRequest++;
+    clearTimeout(teardownTimer);
+    teardownTimer = null;
     isPlaying = false;
     isEndingNaturally = false;
     if (timerInterval) clearInterval(timerInterval);
     
-    if (isRecording) {
-      try { mediaRecorder?.stop(); } catch {}
-      isRecording = false;
-      setRecordUI(false);
-    }
+    stopRecording();
 
     if (!instant && bus?.masterGain && audioContext) {
         const t = audioContext.currentTime;
@@ -829,7 +912,10 @@
             bus.masterGain.gain.setValueAtTime(bus.masterGain.gain.value, t);
             bus.masterGain.gain.linearRampToValueAtTime(0, t + 0.10);
         } catch {}
-        setTimeout(() => teardownBusHard(), 150);
+        const stoppedBus = bus;
+        teardownTimer = setTimeout(() => {
+          if (bus === stoppedBus) teardownBusHard();
+        }, 150);
     } else {
         teardownBusHard();
     }
@@ -853,9 +939,24 @@
   // =========================
   // EXPORT WAV (Full Logic)
   // =========================
+  let isExporting = false;
   async function renderWavExport() {
-    if (!sessionSnapshot?.seed) { announce("Press Play once before exporting"); return; }
-    setSeed(sessionSnapshot.seed);
+    if (!sessionSnapshot) { announce("Press Play once before exporting"); return; }
+    if (isExporting) { announce("WAV export already in progress"); return; }
+    isExporting = true;
+    try {
+      await renderWavSession({ ...sessionSnapshot });
+    } catch (error) {
+      announce("WAV export failed. Try a shorter duration.");
+    } finally {
+      isExporting = false;
+    }
+  }
+
+  async function renderWavSession(sessionSnapshot) {
+    // Preserve the export's own sequence without consuming live playback's RNG.
+    const rand = mulberry32(sessionSnapshot.seed);
+    const chance = (p) => rand() < p;
 
     const durationInput = $("songDuration")?.value ?? "60";
     
@@ -876,7 +977,7 @@
     const offlinePreDelay = offlineCtx.createDelay(0.1);
     offlinePreDelay.delayTime.value = 0.045;
     const offlineReverb = offlineCtx.createConvolver();
-    offlineReverb.buffer = createImpulseResponse(offlineCtx); 
+    offlineReverb.buffer = createImpulseResponse(offlineCtx, sessionSnapshot.seed, false);
     const offlineReverbLP = offlineCtx.createBiquadFilter();
     offlineReverbLP.type = "lowpass";
     offlineReverbLP.frequency.value = 4200;
@@ -1089,7 +1190,7 @@
         localLastDroneStart = t0; localLastDroneDur = droneDur;
         const baseVol = (isArcStart || isClimax) ? 0.40 : 0.28;
         const quality = localMinor ? "min" : "maj";
-        scheduleDroneChord(offlineCtx, offlineMaster, offlineSend, droneRootFreq, t0, droneDur, baseVol, quality, useThirdColor);
+        scheduleDroneChord(offlineCtx, offlineMaster, offlineSend, droneRootFreq, t0, droneDur, baseVol, quality, useThirdColor, rand);
       }
 
       const isDroneSolo = (localArcPos === 0 && localPhraseStep < 12 && localPhraseCount > 0);
@@ -1222,7 +1323,7 @@
     // them effectively desktop-only (no Shift key on touch) — that's by design,
     // not a gap to be filled with touch equivalents.
     document.addEventListener("keydown", (e) => {
-      if (isTypingTarget(e.target)) return;
+      if (e.repeat || isTypingTarget(e.target)) return;
       const k = (e.key || "").toLowerCase();
       if(e.shiftKey && k === "r") toggleRecording();
       if(e.shiftKey && k === "e") renderWavExport();
@@ -1242,7 +1343,6 @@
     }, { capture: true });
 
     setButtonState("stopped");
-    setRecordUI(false);
   });
 
 })();
