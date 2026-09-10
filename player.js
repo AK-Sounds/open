@@ -19,10 +19,31 @@
     window.__OPEN_PLAYER_KILL__();
   }
   
-  window.__OPEN_PLAYER_KILL__ = () => {
+  let disposed = false;
+  const removeListeners = [];
+  const pendingRecordings = new Map();
+  const cancelEncoders = new Set();
+  function listen(target, type, handler, options) {
+    if (!target || disposed) return;
+    target.addEventListener(type, handler, options);
+    removeListeners.push(() => target.removeEventListener(type, handler, options));
+  }
+  function dispose() {
+    if (disposed) return;
+    disposed = true;
+    removeListeners.splice(0).forEach(remove => remove());
     stopAllManual(true);
-    if (audioContext) try { audioContext.close(); } catch {}
-  };
+    for (const cleanup of pendingRecordings.values()) cleanup();
+    for (const cancel of [...cancelEncoders]) cancel();
+    if (audioContext) {
+      try { audioContext.close().catch(() => {}); } catch {}
+      audioContext = null;
+    }
+    cachedImpulseBuffer = null;
+    bridgeAudioEl?.remove();
+    bridgeAudioEl = null;
+  }
+  window.__OPEN_PLAYER_KILL__ = dispose;
 
   const STATE_KEY = "open_player_settings"; // schema-stable key: don't tie this to the script version
 
@@ -56,6 +77,7 @@
   function clamp01(x) { return Math.max(0, Math.min(1, x)); }
 
   function announce(msg) {
+    if (disposed) return;
     const live = $("playerStatus");
     if (!live) return;
     if (live._lastMsg === msg) return;
@@ -316,7 +338,10 @@
     mediaRecorder = null;
     isRecording = false;
     if (recorder && recorder.state !== "inactive") {
-      try { recorder.stop(); } catch { announce("Recording could not be saved"); }
+      try { recorder.stop(); } catch {
+        pendingRecordings.get(recorder)?.();
+        announce("Recording could not be saved");
+      }
     }
   }
 
@@ -328,7 +353,7 @@
   }
 
   function toggleRecording() {
-    if (!bus?.streamDest?.stream) return;
+    if (disposed || !bus?.streamDest?.stream) return;
 
     if (isRecording) {
       stopRecording();
@@ -347,8 +372,16 @@
       return;
     }
 
+    let failed = false;
+    const cleanup = () => {
+      recordedChunks.length = 0;
+      recorder.ondataavailable = recorder.onerror = recorder.onstop = null;
+      pendingRecordings.delete(recorder);
+    };
+    pendingRecordings.set(recorder, cleanup);
     recorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
     recorder.onerror = () => {
+      failed = true;
       if (mediaRecorder === recorder) {
         stopRecording();
         announce("Recording failed");
@@ -359,9 +392,13 @@
         mediaRecorder = null;
         isRecording = false;
       }
-      if (!recordedChunks.length) return;
+      if (disposed || !recordedChunks.length) {
+        cleanup();
+        if (!disposed && !isRecording) announce(failed ? "Recording failed" : "Recording contained no audio");
+        return;
+      }
       const blob = new Blob(recordedChunks, { type: recorder.mimeType || recordedChunks[0].type || "audio/webm" });
-      recordedChunks.length = 0;
+      cleanup();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -369,11 +406,15 @@
       a.download = `open-live-${Date.now()}.${extension}`;
       document.body.appendChild(a);
       a.click();
-      if (!isRecording) setRecordUI(false);
+      if (!isRecording) {
+        if (failed) announce("Recording failed; partial audio saved");
+        else setRecordUI(false);
+      }
       setTimeout(() => { try { document.body.removeChild(a); } catch {} URL.revokeObjectURL(url); }, 100);
     };
 
     try { recorder.start(250); } catch {
+      cleanup();
       announce("Recording could not start");
       return;
     }
@@ -844,6 +885,7 @@
   // CONTROLS
   // =========================
   async function startFromUI() {
+    if (disposed) return;
     let request = ++startRequest;
     try {
       ensureAudioContext();
@@ -945,6 +987,7 @@
   // =========================
   let isExporting = false;
   async function renderWavExport() {
+    if (disposed) return;
     if (!sessionSnapshot) { announce("Press Play once before exporting"); return; }
     if (isExporting) { announce("WAV export already in progress"); return; }
     isExporting = true;
@@ -1258,7 +1301,9 @@
     }
 
     const renderedBuffer = await offlineCtx.startRendering();
+    if (disposed) return;
     const wavBlob = await bufferToWave(renderedBuffer);
+    if (disposed) return;
     const url = URL.createObjectURL(wavBlob);
     const a = document.createElement("a");
     a.style.display = "none";
@@ -1272,12 +1317,25 @@
 
   function bufferToWave(abuffer) {
     return new Promise((resolve, reject) => {
+      if (disposed) { reject(new Error("Player disposed")); return; }
       const worker = new Worker("wav-worker.js");
       let offset = 0;
       let finished = false;
+      let idleTicks = 0;
+      // Count foreground checks, not elapsed wall time: a frozen/background tab
+      // must not turn a healthy encoder into a timeout when it resumes.
+      const watchdog = setInterval(() => {
+        if (document.hidden) { idleTicks = 0; return; }
+        if (++idleTicks >= 30) finish(new Error("WAV encoder stopped responding"));
+      }, 1000);
+      const cancel = () => finish(new Error("Player disposed"));
+      cancelEncoders.add(cancel);
       function finish(error, blob) {
         if (finished) return;
         finished = true;
+        clearInterval(watchdog);
+        cancelEncoders.delete(cancel);
+        worker.onmessage = worker.onerror = worker.onmessageerror = null;
         worker.terminate();
         if (error) reject(error);
         else resolve(blob);
@@ -1289,6 +1347,7 @@
       worker.onmessageerror = () => finish(new Error("WAV encoder message failed"));
       worker.onmessage = ({ data }) => {
         if (finished) return;
+        idleTicks = 0;
         if (data.type === "error") { finish(new Error(data.message)); return; }
         if (data.type === "done") { finish(null, data.blob); return; }
         if (data.type !== "ready") { finish(new Error("Invalid WAV encoder response")); return; }
@@ -1316,40 +1375,40 @@
   // =========================
   // INIT & LISTENERS
   // =========================
-  document.addEventListener("DOMContentLoaded", () => {
+  function initialize() {
     // player.js only ever runs on player.html (see the <script src="player.js">
     // tag there). Launcher routing/mobile-detection lives in index.html's own
     // inline script.
     if (!isPlayerPage()) return;
 
-    $("playNow")?.addEventListener("click", startFromUI);
-    $("stop")?.addEventListener("click", () => stopAllManual(false));
+    listen($("playNow"), "click", startFromUI);
+    listen($("stop"), "click", () => stopAllManual(false));
 
     applyControls(loadState());
 
-    $("tone")?.addEventListener("input", (e) => {
+    listen($("tone"), "input", (e) => {
       if ($("hzReadout")) $("hzReadout").textContent = e.target.value;
       saveState(readControls());
     });
-    $("songDuration")?.addEventListener("change", () => saveState(readControls()));
+    listen($("songDuration"), "change", () => saveState(readControls()));
 
     // Recording/export are deliberately undiscoverable: no on-screen buttons,
     // keyboard-only, feedback via the sr-only aria-live region only. This makes
     // them effectively desktop-only (no Shift key on touch) — that's by design,
     // not a gap to be filled with touch equivalents.
-    document.addEventListener("keydown", (e) => {
+    listen(document, "keydown", (e) => {
       if (e.repeat || isTypingTarget(e.target)) return;
       const k = (e.key || "").toLowerCase();
       if(e.shiftKey && k === "r") toggleRecording();
       if(e.shiftKey && k === "e") renderWavExport();
     });
 
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("pagehide", handleVisibilityChange, { capture: true });
-    window.addEventListener("blur", handleVisibilityChange, { capture: true });
-    if (document.addEventListener) document.addEventListener("freeze", handleVisibilityChange, { capture: true });
+    listen(document, "visibilitychange", handleVisibilityChange);
+    listen(window, "pagehide", handleVisibilityChange, { capture: true });
+    listen(window, "blur", handleVisibilityChange, { capture: true });
+    if (document.addEventListener) listen(document, "freeze", handleVisibilityChange, { capture: true });
 
-    window.addEventListener("pageshow", (e) => {
+    listen(window, "pageshow", (e) => {
       if (isMobileDevice() && e.persisted) {
         closeCtxAfterStop = true;
         stopAllManual(true, "Reset (restore)");
@@ -1358,7 +1417,9 @@
     }, { capture: true });
 
     setButtonState("stopped");
-  });
+  }
+  if (document.readyState === "loading") listen(document, "DOMContentLoaded", initialize, { once: true });
+  else initialize();
 
 })();
 // --- END OF SCRIPT ---

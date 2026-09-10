@@ -10,6 +10,15 @@ function harness(source = fs.readFileSync(path.join(__dirname, '../player.js'), 
   let wall = 0, nextTimer = 0;
   const timers = new Map(), contexts = [], recordings = [], downloads = [], blobs = [], workers = [];
   const elements = new Map();
+  const listeners = [];
+  const eventTarget = () => ({
+    addEventListener(type, handler) { listeners.push({ target: this, type, handler }); },
+    removeEventListener(type, handler) {
+      const i = listeners.findIndex(l => l.target === this && l.type === type && l.handler === handler);
+      if (i >= 0) listeners.splice(i, 1);
+    },
+    dispatch(type) { for (const l of [...listeners]) if (l.target === this && l.type === type) l.handler({ type }); }
+  });
   const param = () => ({ value: 0, setValueAtTime() {}, linearRampToValueAtTime() {},
     exponentialRampToValueAtTime() {}, setTargetAtTime() {}, cancelScheduledValues() {} });
   class Context {
@@ -79,8 +88,8 @@ function harness(source = fs.readFileSync(path.join(__dirname, '../player.js'), 
   }
   function element(id) {
     if (!elements.has(id)) elements.set(id, { value: id === 'tone' ? '110' : 'infinite',
-      classList: { toggle() {} }, style: {}, setAttribute() {}, addEventListener() {},
-      play: () => Promise.resolve(), pause() {}, click() { downloads.push(this.download); } });
+      classList: { toggle() {} }, style: {}, setAttribute() {}, ...eventTarget(),
+      play: () => Promise.resolve(), pause() {}, remove() {}, click() { downloads.push(this.download); } });
     return elements.get(id);
   }
   const addTimer = (fn, ms, repeat) => {
@@ -92,9 +101,9 @@ function harness(source = fs.readFileSync(path.join(__dirname, '../player.js'), 
     AudioContext: Context, OfflineAudioContext: OfflineContext, MediaRecorder: Recorder, Worker,
     localStorage: { getItem() { return null; }, setItem() {} },
     URL: { createObjectURL(blob) { blobs.push(blob); return 'blob:test'; }, revokeObjectURL() {} },
-    document: { getElementById: element, createElement: () => element(Symbol()),
-      addEventListener() {}, body: { appendChild() {}, removeChild() {} }, hidden: false },
-    addEventListener() {},
+    document: { readyState: "loading", getElementById: element, createElement: () => element(Symbol()),
+      ...eventTarget(), body: { appendChild() {}, removeChild() {} }, hidden: false },
+    ...eventTarget(),
     setTimeout: (fn, ms) => addTimer(fn, ms, false), clearTimeout: id => timers.delete(id),
     setInterval: (fn, ms) => addTimer(fn, ms, true), clearInterval: id => timers.delete(id) };
   sandbox.window = sandbox;
@@ -121,7 +130,7 @@ function harness(source = fs.readFileSync(path.join(__dirname, '../player.js'), 
       }
     }
   }
-  return { api: sandbox.api, sandbox, advance, contexts, recordings, downloads, blobs, elements, Recorder, workers };
+  return { api: sandbox.api, sandbox, advance, contexts, recordings, downloads, blobs, elements, Recorder, workers, listeners, timers };
 }
 
 test('rapid Stop → Play cannot tear down the new session', async () => {
@@ -336,4 +345,88 @@ test('worker startup, runtime, and message failures reject encoding', async () =
     await assert.rejects(h.api.bufferToWave(buffer), /WAV encoder/);
     assert.equal(terminated, true);
   }
+});
+
+test('empty and failed recordings release callbacks and report the actual outcome', async () => {
+  const h = harness(); await h.api.startFromUI();
+  h.api.toggleRecording(); const empty = h.recordings[0];
+  empty.state = 'inactive'; empty.onstop();
+  assert.equal(h.api.state().isRecording, false);
+  assert.equal(empty.onstop, null); assert.equal(empty.ondataavailable, null);
+  assert.equal(h.downloads.length, 0);
+  assert.equal(h.elements.get('playerStatus').textContent, 'Recording contained no audio');
+  h.api.toggleRecording(); const failed = h.recordings[1];
+  failed.onerror(); failed.finish('partial');
+  assert.equal(h.elements.get('playerStatus').textContent, 'Recording failed; partial audio saved');
+  assert.equal(failed.onerror, null); assert.equal(failed.onstop, null);
+  assert.equal(await h.blobs[0].text(), 'partial');
+  h.Recorder.failStart = true; h.api.toggleRecording();
+  assert.equal(h.recordings[2].onstop, null);
+});
+
+test('a stalled encoder times out, leaves playback running, and allows export retry', async () => {
+  const h = harness(); await h.api.startFromUI(); h.elements.get('songDuration').value = '60';
+  const NativeWorker = h.sandbox.Worker;
+  let worker;
+  h.sandbox.Worker = class {
+    constructor() { worker = this; }
+    postMessage() {}
+    terminate() { this.terminated = true; }
+  };
+  const pending = h.api.renderWavExport();
+  h.contexts[1].resolve(audioBuffer([new Float32Array(4)]));
+  await new Promise(resolve => setImmediate(resolve));
+  h.elements.get('songDuration').value = 'infinite';
+  h.sandbox.document.hidden = true; h.advance(120);
+  assert.equal(worker.terminated, undefined);
+  h.sandbox.document.hidden = false; h.advance(31); await pending;
+  assert.equal(worker.terminated, true); assert.equal(worker.onmessage, null);
+  assert.equal(h.api.state().isPlaying, true);
+  h.sandbox.Worker = NativeWorker;
+  h.elements.get('songDuration').value = '60';
+  const retry = h.api.renderWavExport();
+  h.contexts[2].resolve(audioBuffer([new Float32Array(4)])); await retry;
+  assert.equal(h.downloads.length, 1);
+});
+
+test('encoder progress renews the watchdog instead of limiting total export time', async () => {
+  const h = harness(); let worker;
+  h.sandbox.Worker = class {
+    constructor() { worker = this; }
+    postMessage() {}
+    terminate() { this.terminated = true; }
+  };
+  const pending = h.api.bufferToWave(audioBuffer([new Float32Array(65537)]));
+  h.advance(20); worker.onmessage({ data: { type: 'ready' } });
+  h.advance(20); worker.onmessage({ data: { type: 'ready' } });
+  h.advance(20); worker.onmessage({ data: { type: 'done', blob: new Blob(['wav']) } });
+  await pending; assert.equal(worker.terminated, true); assert.equal(h.timers.size, 0);
+});
+
+test('disposal removes listeners and prevents late render downloads and stale Play', async () => {
+  const h = harness(); h.sandbox.document.dispatch('DOMContentLoaded');
+  assert.ok(h.listeners.length > 5);
+  await h.api.startFromUI(); h.elements.get('songDuration').value = '60';
+  h.api.toggleRecording(); const recorder = h.recordings[0];
+  const pending = h.api.renderWavExport();
+  h.sandbox.__OPEN_PLAYER_KILL__(); h.sandbox.__OPEN_PLAYER_KILL__();
+  assert.equal(h.listeners.length, 0); assert.equal(recorder.onstop, null);
+  assert.equal(h.api.state().audioContext, null); assert.equal(h.api.state().nodes, 0);
+  h.contexts[1].resolve(audioBuffer([new Float32Array(4)])); await pending;
+  await h.api.startFromUI();
+  assert.equal(h.workers.length, 0); assert.equal(h.downloads.length, 0);
+  assert.equal(h.contexts.length, 2); assert.equal(h.timers.size, 0);
+});
+
+test('disposal cancels active encoding and rejects its pending promise', async () => {
+  const h = harness(); let worker;
+  h.sandbox.Worker = class {
+    constructor() { worker = this; }
+    postMessage() {}
+    terminate() { this.terminated = true; }
+  };
+  const pending = h.api.bufferToWave(audioBuffer([new Float32Array(4)]));
+  const rejected = assert.rejects(pending, /disposed/);
+  h.sandbox.__OPEN_PLAYER_KILL__(); await rejected;
+  assert.equal(worker.terminated, true); assert.equal(h.timers.size, 0);
 });

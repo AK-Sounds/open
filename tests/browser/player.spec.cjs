@@ -169,3 +169,24 @@ test('the direct output and media bridge are active and share the live mix', asy
   await page.locator('#stop').click();
   await page.waitForFunction(() => document.getElementById('open-airplay-bridge').srcObject === null);
 });
+
+
+test('reloading the script disposes the old instance and binds controls once', async ({ page }) => {
+  const errors = []; page.on('pageerror', error => errors.push(error.message));
+  await page.goto('/player.html');
+  await page.locator('#playNow').click();
+  await expect(page.locator('#playNow')).toHaveAttribute('aria-pressed', 'true');
+  await page.addScriptTag({ url: '/player.js?reload=1' });
+  await page.addScriptTag({ url: '/player.js?reload=2' });
+  await expect.poll(() => page.evaluate(() => audioProbe.contexts[0].state)).toBe('closed');
+  await page.locator('#playNow').click();
+  await expect(page.locator('#playNow')).toHaveAttribute('aria-pressed', 'true');
+  expect(await page.evaluate(() => audioProbe.contexts.length)).toBe(2);
+  await expect(page.locator('#open-airplay-bridge')).toHaveCount(1);
+  await page.keyboard.press('Shift+R');
+  await expect(page.locator('#playerStatus')).toHaveText('Recording started');
+  expect(await page.evaluate(() => audioProbe.recorders.length)).toBe(1);
+  await page.evaluate(() => window.__OPEN_PLAYER_KILL__());
+  await expect(page.locator('#open-airplay-bridge')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
