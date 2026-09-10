@@ -45,6 +45,8 @@ Because there are no project files, you save the *audio*, not the *session*.
 * **Live Recording:** Press **`Shift + R`** to capture the current mix in real time; press it again to save. The browser selects the recording format, saved as `.webm`, `.ogg`, or `.m4a`. Recording also finishes automatically after a natural ending and its remaining audio tail.
 * **Export WAV:** Press **`Shift + E`** to create an independent generative rendering as a lossless, 16-bit PCM `.wav` file. Export uses its own random state initialized from the session seed and retains its own sequence and ending behavior. It does not reproduce the live performance or alter its random state. Synthesis runs through `OfflineAudioContext`, with WAV encoding handled in a worker. The selected duration controls export length; "Infinite" uses a 30-minute core-duration cap, followed by 40 seconds for decay. The root tone is the value captured when Play was pressed.
 
+**Long exports need memory.** A 30-minute WAV export (also used for “Infinite”) creates about 650 MB of uncompressed working audio and a 325 MB WAV file, plus browser and synthesis overhead. Leave plenty of available memory and close other demanding tabs or apps before a long export. Available system memory does not guarantee the browser can complete it; if an export fails or the tab closes, try a shorter duration. These are calculated data sizes, not measured peak RAM requirements.
+
 ---
 
 ### License

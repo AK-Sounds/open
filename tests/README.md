@@ -50,3 +50,21 @@ The encoder watchdog resets on each worker reply. Thirty foreground timer checks
 Recorder callbacks and buffered chunks are released on completion or failure to start. Empty recordings report no audio; recordings that fail but deliver data retain that partial download and report it as partial.
 
 The instance disposer removes event listeners, stops live audio, clears recorder callbacks, terminates active encoders, and removes the hidden bridge. A native browser test reloads the script twice and checks that controls bind once. A pending offline render cannot be cancelled through this disposer: it may finish computing, but its result is discarded without encoding or downloading. Ordinary Stop and Play do not cancel an independent export.
+
+
+## Long-export memory accounting
+
+The export renders stereo audio at 44,100 Hz with 32-bit float samples, then encodes 16-bit PCM. Every selected duration includes 40 seconds for decay. Calculated payload sizes, in decimal MB:
+
+| Selected duration | Render buffer | WAV file |
+| --- | ---: | ---: |
+| 1 minute | 35.28 MB | 17.64 MB |
+| 5 minutes | 119.95 MB | 59.98 MB |
+| 10 minutes | 225.79 MB | 112.90 MB |
+| 30 minutes / Infinite | 649.15 MB | 324.58 MB |
+
+Render bytes = `(durationSeconds + 40) * 44100 * 2 * 4`; WAV bytes = `(durationSeconds + 40) * 44100 * 2 * 2 + 44`.
+
+The render buffer remains available during encoding while WAV Blob parts accumulate. One stereo input chunk contains up to 524,288 bytes and its encoded PCM contains up to 262,144 bytes. Chunking bounds these transfers, not the total export footprint. Offline synthesis nodes, reverb buffers, live playback, browser internals, and any temporary copies add overhead. Blob storage and memory reclamation are browser-dependent, so adding payload sizes is not a measured process-RAM peak or a guaranteed minimum-memory requirement. This review accounts for allocations in the code; it does not profile a full-length export on physical devices.
+
+Long exports remain available with the existing duration cap and audio quality. The README advises users to leave memory headroom and retry a shorter duration if necessary; no warning dialog or new export restriction is imposed.
